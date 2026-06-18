@@ -1,0 +1,352 @@
+/* EveryAPI panel styling. Layout/spacing track the design prototype
+   (plugins/Obsidian.html); colors lean on Obsidian theme variables so the
+   panel looks native in any theme, with the EveryAPI purple reserved for
+   brand moments (logo, send, insert, focus ring). */
+
+body {
+  --everyapi-accent: #7c5cff;
+  --everyapi-accent-2: #a482ff;
+  --everyapi-good: #5ccb8e;
+}
+
+.everyapi-chat {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 0;
+}
+
+/* ---------- message list ---------- */
+
+.everyapi-body {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+  padding: 10px 0;
+}
+
+.everyapi-msg {
+  padding: 8px 13px;
+}
+.everyapi-msg.is-user {
+  background: var(--background-secondary);
+}
+.everyapi-msg-who {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: var(--font-ui-smaller);
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-bottom: 5px;
+}
+.everyapi-msg-meta {
+  margin-left: auto;
+  font-family: var(--font-monospace);
+  font-size: 10px;
+  color: var(--text-faint);
+  font-weight: 400;
+}
+.everyapi-msg-body {
+  font-size: var(--font-ui-small);
+  line-height: 1.6;
+  user-select: text;
+  white-space: pre-wrap;
+}
+/* MarkdownRenderer output supplies its own block layout. */
+.everyapi-msg.is-ai .everyapi-msg-body {
+  white-space: normal;
+}
+/* …but the streaming bubble is plain text until the final markdown pass. */
+.everyapi-msg.is-ai .everyapi-msg-body.is-streaming {
+  white-space: pre-wrap;
+}
+.everyapi-msg-body > p:first-child {
+  margin-top: 0;
+}
+.everyapi-msg-body > p:last-child {
+  margin-bottom: 0;
+}
+.everyapi-msg-err {
+  margin-top: 6px;
+  font-size: var(--font-ui-smaller);
+  color: var(--text-error);
+}
+
+.everyapi-insert {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 6px;
+  font-size: var(--font-ui-smaller);
+  cursor: pointer;
+  background: rgba(124, 92, 255, 0.16);
+  color: var(--everyapi-accent-2);
+  border: 1px solid rgba(124, 92, 255, 0.3);
+  box-shadow: none;
+}
+.everyapi-insert:hover {
+  background: rgba(124, 92, 255, 0.24);
+}
+.everyapi-insert.is-done {
+  color: var(--everyapi-good);
+  border-color: rgba(92, 203, 142, 0.4);
+  background: rgba(92, 203, 142, 0.12);
+  cursor: default;
+}
+
+.everyapi-cursor {
+  display: inline-block;
+  width: 7px;
+  height: 14px;
+  background: var(--everyapi-accent);
+  vertical-align: text-bottom;
+  animation: everyapi-blink 1.05s steps(2) infinite;
+}
+@keyframes everyapi-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+/* ---------- empty state ---------- */
+
+.everyapi-empty {
+  padding: 24px 16px;
+  text-align: center;
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+  line-height: 1.7;
+}
+.everyapi-empty .everyapi-logo {
+  margin: 0 auto 10px;
+}
+.everyapi-sugs {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 14px;
+}
+.everyapi-sug {
+  text-align: left;
+  background: var(--background-primary-alt);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 7px;
+  padding: 8px 10px;
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  cursor: pointer;
+  box-shadow: none;
+  height: auto;
+}
+.everyapi-sug:hover {
+  border-color: var(--everyapi-accent);
+}
+
+/* ---------- footer / ask box ---------- */
+
+.everyapi-foot {
+  flex: none;
+  border-top: 1px solid var(--background-modifier-border);
+  padding: 9px 10px 10px;
+}
+.everyapi-box {
+  background: var(--background-primary-alt);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  padding: 8px 9px 6px;
+}
+.everyapi-box:focus-within {
+  border-color: var(--everyapi-accent);
+}
+.everyapi-box textarea {
+  width: 100%;
+  background: transparent;
+  border: 0;
+  outline: 0;
+  box-shadow: none;
+  resize: none;
+  padding: 0;
+  font-size: var(--font-ui-small);
+  line-height: 1.5;
+  max-height: 120px;
+  font-family: inherit;
+}
+.everyapi-box textarea:focus {
+  box-shadow: none;
+}
+
+.everyapi-tools {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+.everyapi-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 23px;
+  padding: 0 7px;
+  border-radius: 6px;
+  background: var(--background-modifier-hover);
+  border: 1px solid var(--background-modifier-border);
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 40%;
+  flex: none;
+}
+.everyapi-chip.is-off {
+  color: var(--text-faint);
+}
+.everyapi-chip.is-model {
+  cursor: pointer;
+  color: var(--text-normal);
+}
+.everyapi-chip.is-model:hover {
+  border-color: var(--everyapi-accent);
+}
+
+.everyapi-send {
+  margin-left: auto;
+  width: 28px;
+  height: 25px;
+  border-radius: 6px;
+  display: grid;
+  place-items: center;
+  background: var(--everyapi-accent);
+  color: #fff;
+  cursor: pointer;
+  flex: none;
+}
+.everyapi-send.is-busy {
+  background: #a1373f;
+}
+.everyapi-send svg {
+  width: 14px;
+  height: 14px;
+}
+/* The model chip and send control are <button>s (keyboard a11y); strip the
+   native button chrome so they keep the chip/icon styling above. */
+.everyapi-chip.is-model,
+.everyapi-send {
+  appearance: none;
+  font-family: inherit;
+}
+.everyapi-send {
+  border: none;
+  padding: 0;
+}
+
+/* Reply action row: insert at cursor / append as quote / copy. */
+.everyapi-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.everyapi-actions .everyapi-insert {
+  margin-top: 0;
+}
+
+/* ---------- onboarding ---------- */
+
+.everyapi-onboard {
+  margin: auto;
+  width: min(320px, 90%);
+  text-align: center;
+  padding: 24px 0;
+}
+.everyapi-onboard h3 {
+  margin: 14px 0 6px;
+}
+.everyapi-onboard p {
+  font-size: var(--font-ui-small);
+  color: var(--text-muted);
+  margin: 0 0 16px;
+}
+.everyapi-onboard input {
+  width: 100%;
+  font-family: var(--font-monospace);
+  margin-bottom: 8px;
+}
+.everyapi-onboard button {
+  width: 100%;
+  margin-top: 4px;
+}
+.everyapi-onboard-err {
+  min-height: 18px;
+  font-size: var(--font-ui-smaller);
+  color: var(--text-error);
+}
+.everyapi-onboard-hint {
+  margin-top: 12px;
+  font-size: var(--font-ui-smaller);
+  color: var(--text-faint);
+}
+.everyapi-onboard .everyapi-logo {
+  margin: 0 auto;
+}
+
+/* ---------- shared brand bits ---------- */
+
+.everyapi-logo {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: linear-gradient(140deg, #8b6bff, #6a44ff);
+  display: grid;
+  place-items: center;
+}
+.everyapi-logo-ring {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  box-sizing: border-box;
+}
+
+.everyapi-status {
+  cursor: pointer;
+}
+
+/* Settings tab: keys are long — give the password field the full row. */
+.everyapi-key-input {
+  width: 100%;
+}
+
+/* ---------- agent approval modal ---------- */
+/* Shown before any write_file / apply_diff touches the vault: the user reviews
+   the diff/new-note preview and explicitly confirms (the gate fails closed). */
+.everyapi-approval-hint {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  margin-bottom: 10px;
+}
+.everyapi-approval-preview {
+  max-height: 50vh;
+  overflow: auto;
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  user-select: text;
+}
+.everyapi-approval-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 14px;
+}

@@ -1,0 +1,31 @@
+{
+  "name": "everyapi-obsidian",
+  "version": "0.1.1",
+  "description": "Chat with 240+ LLMs in an Obsidian side panel via the EveryAPI gateway, with your current note as context.",
+  "license": "MIT",
+  "private": false,
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/everyapi-ai/everyapi-obsidian.git"
+  },
+  "homepage": "https://everyapi.ai",
+  "keywords": [
+    "obsidian",
+    "obsidian-plugin",
+    "llm",
+    "ai",
+    "chat",
+    "everyapi"
+  ],
+  "scripts": {
+    "build": "tsc --noEmit && node esbuild.mjs",
+    "dev": "node esbuild.mjs --watch"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "esbuild": "^0.24.2",
+    "obsidian": "^1.7.2",
+    "typescript": "^5.9.3"
+  }
+}
