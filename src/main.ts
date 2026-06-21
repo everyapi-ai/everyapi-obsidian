@@ -10,7 +10,7 @@
 // fiction; here the gateway is the source of truth: /v1/models for the model
 // list, /api/usage/token/ for the balance, real SSE streaming for replies.
 
-import { fetchBalanceUsd } from '@everyapi-ai/gateway'
+import { fetchBalanceUsd, fetchQuotaPerUsd } from '@everyapi-ai/gateway'
 import { type Editor, Plugin, WorkspaceLeaf, addIcon } from 'obsidian'
 
 import { CLIENT_APP } from './constants'
@@ -149,11 +149,14 @@ export default class EveryApiPlugin extends Plugin {
     if (!force && now - this.lastBalanceAt < BALANCE_MIN_INTERVAL_MS) return
     this.lastBalanceAt = now
     try {
-      const usd = await fetchBalanceUsd({
+      const opts = {
         baseUrl: this.settings.baseUrl,
         apiKey: this.settings.apiKey,
         clientApp: CLIENT_APP,
-      })
+      }
+      // Resolve the deployment's real quota→USD peg so a retuned self-hosted
+      // instance shows a correct balance, not the default-peg figure.
+      const usd = await fetchBalanceUsd(opts, await fetchQuotaPerUsd(opts))
       el.setText(usd === null ? 'EveryAPI' : `EveryAPI: $${usd.toFixed(2)}`)
     } catch {
       // Balance is decoration, not a feature gate — the panel keeps working

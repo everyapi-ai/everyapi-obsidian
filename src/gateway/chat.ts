@@ -23,7 +23,7 @@ export interface ImagePart {
 export type ContentPart = TextPart | ImagePart
 
 export interface ChatMessage {
-  role: 'user' | 'assistant' | 'system'
+  role: 'user' | 'assistant' | 'system' | 'tool'
   /**
    * Plain text, or — for a user turn carrying attached images — an OpenAI
    * multimodal `content` array of text/image parts. The request body forwards it
@@ -31,6 +31,27 @@ export interface ChatMessage {
    * unchanged common case.
    */
   content: string | ContentPart[]
+  /**
+   * OpenAI tool-call protocol. Present only on an `assistant` turn that invoked
+   * tools; carried verbatim so a multi-turn tool conversation round-trips. Plain
+   * chat never sets it, so existing callers are unaffected.
+   */
+  tool_calls?: ChatToolCall[]
+  /** Links a `tool`-role result message back to its originating call id. */
+  tool_call_id?: string
+}
+
+/** An assistant's request to call a tool, in OpenAI's wire shape. */
+export interface ChatToolCall {
+  id: string
+  type: 'function'
+  function: { name: string; arguments: string }
+}
+
+/** A function tool advertised to the upstream so it can emit tool calls. */
+export interface ChatTool {
+  type: 'function'
+  function: { name: string; description?: string; parameters?: object }
 }
 
 export interface ChatUsage {
@@ -56,6 +77,12 @@ export interface StreamChatInput extends RequestOptions {
    * overridden here — the protocol-critical fields always win.
    */
   modelOptions?: Record<string, unknown>
+  /**
+   * OpenAI function-tool definitions forwarded to the upstream so it can emit
+   * tool calls. Omit (or pass empty) for a plain chat request — the `tools` key
+   * is then absent from the body, exactly as before.
+   */
+  tools?: ChatTool[]
   signal: AbortSignal
   onTextDelta: (chunk: string) => void
   /**
@@ -99,6 +126,7 @@ export async function streamChat(input: StreamChatInput): Promise<void> {
     model: input.model,
     messages: input.messages,
     stream: true,
+    ...(input.tools && input.tools.length ? { tools: input.tools } : {}),
     ...(wantUsage ? { stream_options: { include_usage: true } } : {}),
   }
 

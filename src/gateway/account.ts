@@ -62,11 +62,37 @@ export async function fetchLogs(opts: RequestOptions): Promise<LogRow[]> {
   return Array.isArray(body.data) ? body.data : []
 }
 
-/** Remaining balance in USD, or null for unlimited-quota keys. */
-export async function fetchBalanceUsd(opts: RequestOptions): Promise<number | null> {
+/**
+ * GET `{admin}/status` — the deployment's quota→USD peg (`quota_per_unit`).
+ * Self-hosted operators can retune it; the public/default deployment returns
+ * {@link QUOTA_PER_USD}. Falls back to that default when the field is
+ * absent/non-positive or the request fails, so a caller can always format with
+ * the result. Pass it to {@link fmtUsd} (and any `quota / peg` math) instead of
+ * the hardcoded constant. The endpoint is public, but we still send auth since
+ * every other admin read does.
+ */
+export async function fetchQuotaPerUsd(opts: RequestOptions): Promise<number> {
+  try {
+    const url = `${adminApiBase(opts.baseUrl)}/status`
+    const body = await getJson<Envelope<{ quota_per_unit?: number }>>(url, opts)
+    const v = body.data?.quota_per_unit
+    return typeof v === 'number' && v > 0 ? v : QUOTA_PER_USD
+  } catch {
+    return QUOTA_PER_USD
+  }
+}
+
+/** Remaining balance in USD, or null for unlimited-quota keys. Pass `perUsd`
+ *  (from {@link fetchQuotaPerUsd}) for a retuned self-hosted peg; omitted, it
+ *  uses the published default. */
+export async function fetchBalanceUsd(
+  opts: RequestOptions,
+  perUsd: number = QUOTA_PER_USD
+): Promise<number | null> {
   const wallet = await fetchWallet(opts)
   if (wallet.unlimited_quota) return null
-  return (wallet.total_available ?? 0) / QUOTA_PER_USD
+  const rate = perUsd > 0 ? perUsd : QUOTA_PER_USD
+  return (wallet.total_available ?? 0) / rate
 }
 
 // ---------------------------------------------------------------------------
