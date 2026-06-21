@@ -6,9 +6,31 @@
 
 import { authHeaders, resolveSignal, safeReadText, type RequestOptions } from './http'
 
+/** A text segment of a multimodal message. */
+export interface TextPart {
+  type: 'text'
+  text: string
+}
+
+/** An image segment of a multimodal message: a data: or http(s) URL the gateway
+ *  forwards to a vision-capable upstream in OpenAI `image_url` shape. */
+export interface ImagePart {
+  type: 'image_url'
+  image_url: { url: string }
+}
+
+/** One part of a multimodal message `content` array. */
+export type ContentPart = TextPart | ImagePart
+
 export interface ChatMessage {
   role: 'user' | 'assistant' | 'system'
-  content: string
+  /**
+   * Plain text, or — for a user turn carrying attached images — an OpenAI
+   * multimodal `content` array of text/image parts. The request body forwards it
+   * verbatim, so an array reaches a vision model unchanged; a plain string is the
+   * unchanged common case.
+   */
+  content: string | ContentPart[]
 }
 
 export interface ChatUsage {
@@ -29,7 +51,9 @@ export interface StreamChatInput extends RequestOptions {
   /**
    * Provider-specific tunables (temperature, top_p, stop, …) spread straight
    * into the request body. Keys EveryAPI doesn't understand are ignored
-   * upstream rather than rejected, so this is always safe.
+   * upstream rather than rejected, so this is always safe. `model`, `messages`,
+   * `stream` and `stream_options` are reserved by this function and cannot be
+   * overridden here — the protocol-critical fields always win.
    */
   modelOptions?: Record<string, unknown>
   signal: AbortSignal
@@ -61,16 +85,21 @@ interface OpenAiChunk {
     }
   }>
   usage?: ChatUsage | null
+  // OpenAI-compatible gateways routinely return HTTP 200 and then signal a
+  // failure mid-stream as a JSON frame (e.g. context-length exceeded). Surface
+  // it instead of dropping the frame, otherwise the stream ends "cleanly" and
+  // the caller renders an empty/partial reply as a success.
+  error?: { message?: string; type?: string; code?: string } | string
 }
 
 export async function streamChat(input: StreamChatInput): Promise<void> {
   const wantUsage = Boolean(input.onUsage)
   const body = {
+    ...(input.modelOptions ?? {}),
     model: input.model,
     messages: input.messages,
     stream: true,
     ...(wantUsage ? { stream_options: { include_usage: true } } : {}),
-    ...(input.modelOptions ?? {}),
   }
 
   const res = await fetch(`${input.baseUrl}/chat/completions`, {
@@ -94,6 +123,10 @@ export async function streamChat(input: StreamChatInput): Promise<void> {
   // Tool-call deltas arrive fragmented across chunks (id once, arguments
   // char-by-char). Accumulate by index, flush once the stream ends.
   const toolCallAcc = new Map<number, { id: string; name: string; argsBuf: string }>()
+  // Latch the usage block so onUsage fires at most once with the final
+  // (last-seen) value — some OpenAI-compatible upstreams emit usage on every
+  // delta, not just the trailing chunk, but the callback contract is one-shot.
+  let usage: ChatUsage | undefined
 
   const processLine = (rawLine: string): void => {
     if (rawLine.startsWith(':')) return // SSE comment / keep-alive
@@ -109,6 +142,17 @@ export async function streamChat(input: StreamChatInput): Promise<void> {
       chunk = JSON.parse(payload) as OpenAiChunk
     } catch {
       return // malformed — likely a partially-flushed keep-alive
+    }
+
+    // A mid-stream error frame arrives after a 200, so the HTTP-level guard
+    // above never fires. Throw so the streaming loop rejects and the caller
+    // hits its error path instead of treating the truncated reply as success.
+    if (chunk.error) {
+      throw new Error(
+        typeof chunk.error === 'string'
+          ? chunk.error
+          : (chunk.error.message ?? 'upstream stream error')
+      )
     }
 
     const delta = chunk.choices?.[0]?.delta
@@ -131,8 +175,8 @@ export async function streamChat(input: StreamChatInput): Promise<void> {
         toolCallAcc.set(i, cur)
       })
     }
-    if (chunk.usage && input.onUsage) {
-      input.onUsage(chunk.usage)
+    if (chunk.usage) {
+      usage = chunk.usage
     }
   }
 
@@ -179,6 +223,10 @@ export async function streamChat(input: StreamChatInput): Promise<void> {
       input.onToolCall({ id: tc.id, name: tc.name, input: parsed })
     }
   }
+
+  if (usage && input.onUsage) {
+    input.onUsage(usage)
+  }
 }
 
 export interface CompleteChatInput extends RequestOptions {
@@ -202,10 +250,10 @@ export interface ChatResult {
  */
 export async function completeChat(input: CompleteChatInput): Promise<ChatResult> {
   const body = {
+    ...(input.modelOptions ?? {}),
     model: input.model,
     messages: input.messages,
     stream: false,
-    ...(input.modelOptions ?? {}),
   }
 
   const res = await fetch(`${input.baseUrl}/chat/completions`, {
@@ -229,6 +277,16 @@ export async function completeChat(input: CompleteChatInput): Promise<ChatResult
   const json = (await res.json()) as {
     choices?: Array<{ message?: { content?: string } }>
     usage?: ChatUsage | null
+    error?: { message?: string; type?: string; code?: string } | string
+  }
+  // Some gateways return HTTP 200 with a top-level `error` body instead of a
+  // non-2xx status. Surface it rather than handing back an empty reply.
+  if (json.error) {
+    throw new Error(
+      typeof json.error === 'string'
+        ? json.error
+        : (json.error.message ?? 'upstream error')
+    )
   }
   return {
     text: json.choices?.[0]?.message?.content ?? '',

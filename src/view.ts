@@ -34,7 +34,14 @@ export const VIEW_TYPE_EVERYAPI = 'everyapi-chat'
 
 interface ChatMessage {
   role: 'user' | 'assistant'
+  // The bubble's display text — for an agentic reply this is the cumulative
+  // transcript (interim narration + tool-step lines + final answer).
   text: string
+  // The model's clean final answer, without the tool-step transcript. Set when
+  // the agent loop returns; the insert/append/copy actions use this so the
+  // user's note gets the answer, not the internal tool trace. Falls back to
+  // `text` when absent (e.g. an aborted turn that never produced a final turn).
+  answer?: string
   model?: string
   tokens?: number
   error?: string
@@ -517,8 +524,13 @@ export class ChatView extends ItemView {
         // Commit the final turn's text (it streamed into `live`).
         flushLive()
         aiMsg.text = committed.trimEnd() || result.text
+        // The bubble keeps the full transcript, but insert/append/copy use the
+        // clean final answer so the user's note doesn't get the tool-step log.
+        aiMsg.answer = result.text
         if (result.truncated) {
-          aiMsg.text = `${aiMsg.text}\n\nStopped after ${result.iterations} tool iterations (budget reached).`
+          const note = `Stopped after ${result.iterations} tool iterations (budget reached).`
+          aiMsg.text = `${aiMsg.text}\n\n${note}`
+          aiMsg.answer = aiMsg.answer ? `${aiMsg.answer}\n\n${note}` : note
         }
       } catch (e) {
         // Commit whatever narration/tool steps streamed before the failure.
@@ -613,7 +625,7 @@ export class ChatView extends ItemView {
       new Notice('EveryAPI: open a note in edit mode to insert at the cursor.')
       return
     }
-    const text = msg.text.trim()
+    const text = (msg.answer ?? msg.text).trim()
     if (editor.somethingSelected()) editor.replaceSelection(text)
     else editor.replaceRange(text, editor.getCursor())
     new Notice('EveryAPI: inserted into note.')
@@ -627,13 +639,13 @@ export class ChatView extends ItemView {
       new Notice('EveryAPI: open a markdown note first.')
       return
     }
-    const quoted = toBlockquote(msg.text)
+    const quoted = toBlockquote(msg.answer ?? msg.text)
     await this.app.vault.process(file, (data) => `${data.replace(/\n*$/, '')}\n\n${quoted}\n`)
     new Notice(`EveryAPI: appended to ${file.name}.`)
   }
 
   private async copyReply(msg: ChatMessage): Promise<void> {
-    await navigator.clipboard.writeText(msg.text)
+    await navigator.clipboard.writeText(msg.answer ?? msg.text)
     new Notice('EveryAPI: copied reply to clipboard.')
   }
 }

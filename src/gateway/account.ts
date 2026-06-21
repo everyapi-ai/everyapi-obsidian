@@ -134,7 +134,18 @@ export interface UsageSummary {
 
 export function summarize(logs: LogRow[], now: Date = new Date()): UsageSummary {
   const todayStart = new Date(new Date(now).setHours(0, 0, 0, 0)).getTime() / 1000
-  const weekStart = todayStart - 6 * 86_400
+  // Bucket boundaries are local calendar midnights, not fixed 86400s steps:
+  // a DST week has 23h/25h days, so dividing an epoch delta by a constant
+  // would land near-midnight logs in the adjacent day's bucket. index 0 = 6
+  // days ago … index 6 = today.
+  const dayStarts = new Array(7) as number[]
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(now)
+    d.setHours(0, 0, 0, 0)
+    d.setDate(d.getDate() - (6 - i))
+    dayStarts[i] = d.getTime() / 1000
+  }
+  const weekStart = dayStarts[0]!
 
   let totalQuota = 0
   let todayQuota = 0
@@ -161,7 +172,14 @@ export function summarize(logs: LogRow[], now: Date = new Date()): UsageSummary 
     if (l.created_at >= weekStart) {
       weekQuota += l.quota
       weekCalls++
-      const bucket = Math.min(6, Math.max(0, Math.floor((l.created_at - weekStart) / 86_400)))
+      // Assign to the last local-midnight boundary at or before the log.
+      let bucket = 0
+      for (let i = 6; i >= 0; i--) {
+        if (l.created_at >= dayStarts[i]!) {
+          bucket = i
+          break
+        }
+      }
       dailyQuota[bucket]! += l.quota
       dailyCalls[bucket]! += 1
     }

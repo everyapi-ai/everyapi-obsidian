@@ -165,15 +165,15 @@ export async function resolveRelayKey(
 function sleep(ms: number, signal: AbortSignal): Promise<void> {
   return new Promise((resolve) => {
     if (signal.aborted) return resolve()
-    const t = setTimeout(resolve, ms)
-    signal.addEventListener(
-      'abort',
-      () => {
-        clearTimeout(t)
-        resolve()
-      },
-      { once: true },
-    )
+    const onAbort = () => {
+      clearTimeout(t)
+      resolve()
+    }
+    const t = setTimeout(() => {
+      signal.removeEventListener('abort', onAbort)
+      resolve()
+    }, ms)
+    signal.addEventListener('abort', onAbort, { once: true })
   })
 }
 
@@ -309,12 +309,15 @@ export async function refreshDeviceToken(opts: {
   userAgent?: string
   clientId: string
   refreshToken: string
+  signal?: AbortSignal
+  timeoutMs?: number
 }): Promise<DeviceLoginResult> {
+  const signal = opts.signal ?? AbortSignal.timeout(opts.timeoutMs ?? 15000)
   const r = await oauthForm<{ access_token: string; refresh_token?: string; expires_in?: number }>(
     `${oauthBase(opts.baseUrl)}/token`,
     { grant_type: 'refresh_token', refresh_token: opts.refreshToken, client_id: opts.clientId },
     opts.userAgent,
-    new AbortController().signal,
+    signal,
   )
   if (r.data.error || !r.data.access_token) {
     throw new ApiResponseError(r.data.error_description || r.data.error || 'refresh failed', r.status)
