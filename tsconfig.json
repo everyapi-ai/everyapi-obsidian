@@ -1,14 +1,28 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "baseUrl": ".",
     "paths": {
-      "@everyapi-ai/gateway": ["./src/gateway/index.ts"]
+      "@everyapi-ai/gateway": [
+        "./src/gateway/index.ts"
+      ],
+      "@everyapi-ai/agent-contract": [
+        "./src/agent-contract/index.ts"
+      ],
+      "@everyapi-ai/agent-core": [
+        "./src/agent-core/index.ts"
+      ]
     },
-    "types": ["node"],
+    "types": [
+      "node"
+    ],
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
@@ -19,5 +33,7 @@
     "resolveJsonModule": true,
     "noEmit": true
   },
-  "include": ["src/**/*"]
+  "include": [
+    "src/**/*"
+  ]
 }

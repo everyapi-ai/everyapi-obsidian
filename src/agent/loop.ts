@@ -1,5 +1,5 @@
-// The EveryAPI agentic tool-call loop for the Obsidian surface (see
-// docs/agent-tools/loop.md). Ported from apps/vscode/src/agent/loop.ts — the
+// The EveryAPI agentic tool-call loop for the Obsidian surface (contracted by
+// @everyapi-ai/agent-contract). Ported from apps/vscode/src/agent/loop.ts — the
 // loop itself is host-agnostic; only the auth header differs (Obsidian runs in
 // Electron's fetch, where User-Agent is silently dropped, so we identify the
 // surface via X-Client-App instead of userAgent — same as the gateway's
@@ -22,7 +22,7 @@ import { authHeaders } from '@everyapi-ai/gateway'
 
 import { resultToString } from './diff'
 import type { VaultExecutors } from './executors'
-import { AGENT_TOOLS, isToolName } from './tools'
+import { AGENT_TOOLS, isToolName, TOOL_NAMES } from './tools'
 
 export const MAX_ITERATIONS = 25
 /** Stop letting the model retry the same file after this many consecutive fails. */
@@ -164,7 +164,7 @@ async function runOneCall(
     return resultToString({
       status: 'error',
       error: `Unknown tool '${name}'.`,
-      suggestion: 'Call one of: read_file, list_dir, search_text, write_file, apply_diff.',
+      suggestion: `Call one of: ${TOOL_NAMES.join(', ')}.`,
     })
   }
 

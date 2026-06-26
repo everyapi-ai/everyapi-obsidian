@@ -122,7 +122,7 @@ interface OpenAiChunk {
 export async function streamChat(input: StreamChatInput): Promise<void> {
   const wantUsage = Boolean(input.onUsage)
   const body = {
-    ...(input.modelOptions ?? {}),
+    ...input.modelOptions,
     model: input.model,
     messages: input.messages,
     stream: true,
@@ -278,7 +278,7 @@ export interface ChatResult {
  */
 export async function completeChat(input: CompleteChatInput): Promise<ChatResult> {
   const body = {
-    ...(input.modelOptions ?? {}),
+    ...input.modelOptions,
     model: input.model,
     messages: input.messages,
     stream: false,

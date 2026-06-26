@@ -82,6 +82,50 @@ export async function fetchQuotaPerUsd(opts: RequestOptions): Promise<number> {
   }
 }
 
+export interface StatusInfo {
+  /** quota→USD peg; falls back to {@link QUOTA_PER_USD}. */
+  quotaPerUnit: number
+  /** Deployment build version ('' when the field is absent). */
+  version: string
+  /** Process start time, unix seconds (0 when absent) — derive uptime from it. */
+  startTime: number
+  /** Operator-set deployment name ('' when absent). */
+  systemName: string
+}
+
+/**
+ * GET `{admin}/status` — deployment identity + the quota→USD peg in one read.
+ * A richer sibling of {@link fetchQuotaPerUsd} for callers that also want to
+ * show which deployment/version a key is hitting (e.g. a status tooltip). The
+ * endpoint is public; we send auth like every other admin read. Never throws —
+ * every field falls back so a caller can always render.
+ */
+export async function fetchStatus(opts: RequestOptions): Promise<StatusInfo> {
+  try {
+    const url = `${adminApiBase(opts.baseUrl)}/status`
+    const body = await getJson<
+      Envelope<{
+        quota_per_unit?: number
+        version?: string
+        start_time?: number
+        system_name?: string
+      }>
+    >(url, opts)
+    const d = body.data ?? {}
+    return {
+      quotaPerUnit:
+        typeof d.quota_per_unit === 'number' && d.quota_per_unit > 0
+          ? d.quota_per_unit
+          : QUOTA_PER_USD,
+      version: typeof d.version === 'string' ? d.version : '',
+      startTime: typeof d.start_time === 'number' && d.start_time > 0 ? d.start_time : 0,
+      systemName: typeof d.system_name === 'string' ? d.system_name : '',
+    }
+  } catch {
+    return { quotaPerUnit: QUOTA_PER_USD, version: '', startTime: 0, systemName: '' }
+  }
+}
+
 /** Remaining balance in USD, or null for unlimited-quota keys. Pass `perUsd`
  *  (from {@link fetchQuotaPerUsd}) for a retuned self-hosted peg; omitted, it
  *  uses the published default. */
@@ -164,7 +208,7 @@ export function summarize(logs: LogRow[], now: Date = new Date()): UsageSummary 
   // a DST week has 23h/25h days, so dividing an epoch delta by a constant
   // would land near-midnight logs in the adjacent day's bucket. index 0 = 6
   // days ago … index 6 = today.
-  const dayStarts = new Array(7) as number[]
+  const dayStarts = Array.from<number>({ length: 7 })
   for (let i = 0; i < 7; i++) {
     const d = new Date(now)
     d.setHours(0, 0, 0, 0)
@@ -184,8 +228,8 @@ export function summarize(logs: LogRow[], now: Date = new Date()): UsageSummary 
   const modelQuota: Record<string, number> = {}
   let biggest: LogRow | null = null
 
-  const dailyQuota = new Array(7).fill(0) as number[]
-  const dailyCalls = new Array(7).fill(0) as number[]
+  const dailyQuota = Array.from<number>({ length: 7 }).fill(0)
+  const dailyCalls = Array.from<number>({ length: 7 }).fill(0)
 
   for (const l of logs) {
     totalQuota += l.quota

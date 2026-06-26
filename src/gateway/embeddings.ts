@@ -74,7 +74,7 @@ export async function embed(input: EmbedInput): Promise<EmbedResult> {
   }
   // Slot each embedding into its own `index` position so an out-of-order or
   // sparse response can't shift vectors onto the wrong input.
-  const rows = new Array<number[]>(input.input.length)
+  const rows = Array.from<number[]>({ length: input.input.length })
   let filled = 0
   for (const d of data) {
     const i = d.index ?? -1

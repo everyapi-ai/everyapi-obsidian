@@ -1,12 +1,18 @@
 // OpenAI-shaped tool definitions for the EveryAPI agentic NOTES tool set, as it
 // operates over an Obsidian vault. These mirror the canonical contract at
-// docs/agent-tools/tools.schema.json (the single source of truth across every
-// EveryAPI plugin) and we keep the EXACT contract names — read_file, list_dir,
+// @everyapi-ai/agent-contract (the single source of truth across EveryAPI
+// agent-capable plugins) and we keep the EXACT contract names — read_file, list_dir,
 // search_text, write_file, apply_diff — for cross-plugin consistency. The
 // descriptions are written for notes ("file" = a vault note/file), and there is
 // NO execute_command: Obsidian has no shell. We ship these in the `tools` field
 // of /v1/chat/completions and rely on the gateway to translate them to each
 // upstream's native tool-use format — the plugin never converts client-side.
+
+import {
+  OBSIDIAN_AGENT_TOOL_NAMES,
+  policyByToolName,
+  type ToolPolicy,
+} from '@everyapi-ai/agent-contract'
 
 /** A single OpenAI function tool definition, as sent in the request `tools` array. */
 export interface OpenAiTool {
@@ -23,14 +29,7 @@ export interface OpenAiTool {
   }
 }
 
-/** Execution policy for a tool, mirroring the contract's `policy.tools` map. */
-export interface ToolPolicy {
-  class: 'read' | 'edit'
-  mutates: boolean
-  needsApproval: boolean
-}
-
-export const TOOL_NAMES = ['read_file', 'list_dir', 'search_text', 'write_file', 'apply_diff'] as const
+export const TOOL_NAMES = OBSIDIAN_AGENT_TOOL_NAMES
 
 export type ToolName = (typeof TOOL_NAMES)[number]
 
@@ -38,13 +37,13 @@ export type ToolName = (typeof TOOL_NAMES)[number]
  * Per-tool execution policy. `needsApproval` tools MUST get explicit, per-call
  * user approval before running — the gateway does not gate execution.
  */
-export const TOOL_POLICY: Record<ToolName, ToolPolicy> = {
-  read_file: { class: 'read', mutates: false, needsApproval: false },
-  list_dir: { class: 'read', mutates: false, needsApproval: false },
-  search_text: { class: 'read', mutates: false, needsApproval: false },
-  write_file: { class: 'edit', mutates: true, needsApproval: true },
-  apply_diff: { class: 'edit', mutates: true, needsApproval: true },
-}
+export const TOOL_POLICY = Object.fromEntries(
+  TOOL_NAMES.map((name) => {
+    const policy = policyByToolName(name)
+    if (!policy) throw new Error(`Missing EveryAPI agent tool policy: ${name}`)
+    return [name, policy]
+  }),
+) as Record<ToolName, ToolPolicy>
 
 export function isToolName(name: string): name is ToolName {
   return (TOOL_NAMES as readonly string[]).includes(name)

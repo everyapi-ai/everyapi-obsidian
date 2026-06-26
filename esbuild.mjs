@@ -27,6 +27,8 @@ const options = {
   bundle: true,
   outfile: resolve(root, 'dist/main.js'),
   alias: {
+    '@everyapi-ai/agent-contract': resolve(root, 'src/agent-contract/index.ts'),
+    '@everyapi-ai/agent-core': resolve(root, 'src/agent-core/index.ts'),
     '@everyapi-ai/gateway': resolve(root, 'src/gateway/index.ts'),
   },
   // Plugins run in Electron's renderer process: browser platform, but
