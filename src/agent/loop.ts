@@ -148,7 +148,7 @@ export async function runAgentLoop(input: AgentLoopInput): Promise<AgentLoopResu
           'You have reached the tool-iteration budget for this task. Stop calling tools and give a concise summary of what you did, what remains, and any next steps for the user.',
       },
     ],
-    /* disableTools */ true,
+    /* disableTools */ true
   )
   return { text: final.text || lastText, iterations: MAX_ITERATIONS, truncated: true }
 }
@@ -157,7 +157,7 @@ export async function runAgentLoop(input: AgentLoopInput): Promise<AgentLoopResu
 async function runOneCall(
   input: AgentLoopInput,
   call: AssistantToolCall,
-  failStreak: Map<string, number>,
+  failStreak: Map<string, number>
 ): Promise<string> {
   const name = call.function.name
   if (!isToolName(name)) {
@@ -186,7 +186,8 @@ async function runOneCall(
     return resultToString({
       status: 'error',
       error: `Repeated failures on ${targetKey}; not retrying automatically.`,
-      suggestion: 'Re-read the note from scratch or ask the user to clarify before trying this target again.',
+      suggestion:
+        'Re-read the note from scratch or ask the user to clarify before trying this target again.',
     })
   }
 
@@ -221,7 +222,7 @@ interface OpenAiStreamChunk {
 async function streamOneTurn(
   input: AgentLoopInput,
   messages: LoopMessage[],
-  disableTools = false,
+  disableTools = false
 ): Promise<StreamTurn> {
   const body = {
     model: input.model,
@@ -246,7 +247,9 @@ async function streamOneTurn(
 
   if (!res.ok) {
     const detail = await res.text().catch(() => '')
-    throw new Error(`HTTP ${res.status} ${res.statusText}${detail ? ` — ${detail.slice(0, 200)}` : ''}`)
+    throw new Error(
+      `HTTP ${res.status} ${res.statusText}${detail ? ` — ${detail.slice(0, 200)}` : ''}`
+    )
   }
 
   let text = ''

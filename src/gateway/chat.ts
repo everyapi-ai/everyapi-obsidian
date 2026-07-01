@@ -311,9 +311,7 @@ export async function completeChat(input: CompleteChatInput): Promise<ChatResult
   // non-2xx status. Surface it rather than handing back an empty reply.
   if (json.error) {
     throw new Error(
-      typeof json.error === 'string'
-        ? json.error
-        : (json.error.message ?? 'upstream error')
+      typeof json.error === 'string' ? json.error : (json.error.message ?? 'upstream error')
     )
   }
   return {

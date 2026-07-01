@@ -55,7 +55,7 @@ export class VaultExecutors {
 
   constructor(
     app: App,
-    private readonly approval: ApprovalGate,
+    private readonly approval: ApprovalGate
   ) {
     this.vault = app.vault
   }
@@ -80,7 +80,10 @@ export class VaultExecutors {
           return await this.applyDiff(str(args.path), str(args.diff))
       }
     } catch (e) {
-      return err(e instanceof Error ? e.message : String(e), 'Unexpected failure; adjust the arguments and retry.')
+      return err(
+        e instanceof Error ? e.message : String(e),
+        'Unexpected failure; adjust the arguments and retry.'
+      )
     }
   }
 
@@ -90,16 +93,20 @@ export class VaultExecutors {
     if (!path) return err("'path' is required.")
     const rel = resolveVaultPath(path)
     if (rel === null) return outside(path)
-    if (!rel) return err("'.' is the vault root, not a file.", 'Use list_dir to inspect the vault root.')
+    if (!rel)
+      return err("'.' is the vault root, not a file.", 'Use list_dir to inspect the vault root.')
     if (SECRET_FILE_RE.test(rel)) {
       return err(
         `Refusing to read '${rel}': it looks like a credential file.`,
-        'Ask the user to open or attach this file explicitly if its contents are truly needed.',
+        'Ask the user to open or attach this file explicitly if its contents are truly needed.'
       )
     }
     const file = this.vault.getAbstractFileByPath(rel)
     if (file === null) {
-      return err(`File not found: ${rel}`, 'Use list_dir or search_text to locate the correct path.')
+      return err(
+        `File not found: ${rel}`,
+        'Use list_dir or search_text to locate the correct path.'
+      )
     }
     if (file instanceof TFolder) {
       return err(`'${rel}' is a folder.`, 'Use list_dir to inspect a folder.')
@@ -108,7 +115,10 @@ export class VaultExecutors {
       return err(`'${rel}' is not a readable file.`)
     }
     if (file.stat.size > READ_MAX_BYTES) {
-      return err(`'${rel}' is too large to read (${file.stat.size} bytes).`, 'This tool reads text notes up to ~2 MB.')
+      return err(
+        `'${rel}' is too large to read (${file.stat.size} bytes).`,
+        'This tool reads text notes up to ~2 MB.'
+      )
     }
     const text = await this.vault.cachedRead(file)
     if (text.includes('\u0000')) {
@@ -180,7 +190,7 @@ export class VaultExecutors {
     } catch (e) {
       return err(
         `Invalid regular expression: ${e instanceof Error ? e.message : String(e)}`,
-        'Fix the regex syntax (JavaScript RegExp) and retry.',
+        'Fix the regex syntax (JavaScript RegExp) and retry.'
       )
     }
 
@@ -239,7 +249,9 @@ export class VaultExecutors {
     }
 
     if (!out.length) return ok(`No matches for /${pattern}/ under ${base || '.'}.`)
-    const more = truncated ? `\n…(results capped; tighten the pattern, narrow the path, or set file_glob)` : ''
+    const more = truncated
+      ? `\n…(results capped; tighten the pattern, narrow the path, or set file_glob)`
+      : ''
     return ok(`Matches for /${pattern}/:\n\n${out.join('\n\n')}${more}`)
   }
 
@@ -247,7 +259,8 @@ export class VaultExecutors {
 
   private async writeFile(path: string, content: string | null): Promise<ToolResult> {
     if (!path) return err("'path' is required.")
-    if (content === null) return err("'content' is required.", 'Send the complete file content as a string.')
+    if (content === null)
+      return err("'content' is required.", 'Send the complete file content as a string.')
     const rel = resolveVaultPath(path)
     if (rel === null) return outside(path)
     if (!rel) return err("'.' is the vault root, not a file path.")
@@ -285,7 +298,10 @@ export class VaultExecutors {
 
     const file = this.vault.getAbstractFileByPath(rel)
     if (file === null) {
-      return err(`File not found: ${rel}`, 'apply_diff only edits existing files; use write_file to create one.')
+      return err(
+        `File not found: ${rel}`,
+        'apply_diff only edits existing files; use write_file to create one.'
+      )
     }
     if (file instanceof TFolder) return err(`'${rel}' is a folder.`)
     if (!(file instanceof TFile)) return err(`'${rel}' is not an editable file.`)
@@ -351,7 +367,7 @@ function bool(v: unknown): boolean | undefined {
 function outside(path: string): ToolResult {
   return err(
     `'${path}' is outside the vault.`,
-    'Only paths inside the vault can be accessed; do not use absolute paths or ".." to escape it.',
+    'Only paths inside the vault can be accessed; do not use absolute paths or ".." to escape it.'
   )
 }
 

@@ -10,7 +10,7 @@ export function formatNumberedLines(
   relPath: string,
   content: string,
   offset = 1,
-  limit = READ_DEFAULT_LINES,
+  limit = READ_DEFAULT_LINES
 ): ReadFormatResult {
   const lines = content.split(/\r?\n/)
   const start = Math.max(1, Math.floor(offset || 1))
@@ -39,7 +39,10 @@ export function formatNumberedLines(
     end < lines.length
       ? `\n…(${lines.length - end} more lines; call read_file again with offset=${end + 1})`
       : ''
-  return { ok: true, text: `File: ${relPath} (lines ${start}-${end} of ${lines.length})\n${body}${more}` }
+  return {
+    ok: true,
+    text: `File: ${relPath} (lines ${start}-${end} of ${lines.length})\n${body}${more}`,
+  }
 }
 
 export interface DiffStat {

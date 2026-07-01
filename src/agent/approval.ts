@@ -30,7 +30,7 @@ export class ObsidianApprovalGate implements ApprovalGate {
     return this.ask(
       isNew ? `Create note ${relPath}?` : `Overwrite note ${relPath}?`,
       preview,
-      isNew ? 'Create note' : 'Overwrite note',
+      isNew ? 'Create note' : 'Overwrite note'
     )
   }
 
@@ -58,7 +58,7 @@ class ApprovalModal extends Modal {
     private readonly title: string,
     private readonly preview: string,
     private readonly confirmLabel: string,
-    private readonly resolve: (approved: boolean) => void,
+    private readonly resolve: (approved: boolean) => void
   ) {
     super(app)
   }

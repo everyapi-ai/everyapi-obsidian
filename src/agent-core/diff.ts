@@ -46,7 +46,12 @@ export function locateBlock(text: string, block: DiffBlock): BlockMatch {
     index: -1,
     length: 0,
     closest: fz
-      ? { from: fz.line + 1, to: fz.line + window, score: Math.round(fz.score * 100), text: fz.text }
+      ? {
+          from: fz.line + 1,
+          to: fz.line + window,
+          score: Math.round(fz.score * 100),
+          text: fz.text,
+        }
       : undefined,
   }
 }
@@ -65,7 +70,11 @@ interface FuzzyWindow {
   text: string
 }
 
-export function bestFuzzyWindow(text: string, search: string, startLine: number): FuzzyWindow | null {
+export function bestFuzzyWindow(
+  text: string,
+  search: string,
+  startLine: number
+): FuzzyWindow | null {
   const lines = text.split('\n')
   const searchLines = search.split('\n')
   const window = searchLines.length
@@ -138,7 +147,8 @@ export function applyDiff(relPath: string, oldText: string, diff: string): Apply
   let lineDelta = 0
   for (let bi = 0; bi < blocks.length; bi++) {
     const raw = blocks[bi]!
-    const block = lineDelta !== 0 ? { ...raw, startLine: Math.max(1, raw.startLine + lineDelta) } : raw
+    const block =
+      lineDelta !== 0 ? { ...raw, startLine: Math.max(1, raw.startLine + lineDelta) } : raw
     const match = locateBlock(working, block)
     if (!match.found) {
       return {
@@ -152,7 +162,8 @@ export function applyDiff(relPath: string, oldText: string, diff: string): Apply
           'Re-read the file to get the exact current content and line numbers, then retry with corrected SEARCH text.',
       }
     }
-    working = working.slice(0, match.index) + block.replace + working.slice(match.index + match.length)
+    working =
+      working.slice(0, match.index) + block.replace + working.slice(match.index + match.length)
     lineDelta += countNewlines(raw.replace) - countNewlines(raw.search)
   }
 

@@ -42,7 +42,7 @@ export const TOOL_POLICY = Object.fromEntries(
     const policy = policyByToolName(name)
     if (!policy) throw new Error(`Missing EveryAPI agent tool policy: ${name}`)
     return [name, policy]
-  }),
+  })
 ) as Record<ToolName, ToolPolicy>
 
 export function isToolName(name: string): name is ToolName {
@@ -137,14 +137,14 @@ export const AGENT_TOOLS: OpenAiTool[] = [
     function: {
       name: 'write_file',
       description:
-        "Create a new note/file in the vault, or completely overwrite an existing one, with the full content provided. Parent folders are created automatically. MUTATES THE VAULT and requires explicit user approval before anything is written. Use this ONLY for a new note or an intentional full rewrite; to change part of an existing note use apply_diff instead (it is safer and does not require resending the whole note). ALWAYS provide the COMPLETE intended file content with no truncation, no line numbers, and no placeholders such as '...rest of note unchanged...' — partial content will produce a broken note. Example: {\"path\": \"Notes/New Idea.md\", \"content\": \"# New Idea\\n\\nFirst draft.\\n\"}.",
+        'Create a new note/file in the vault, or completely overwrite an existing one, with the full content provided. Parent folders are created automatically. MUTATES THE VAULT and requires explicit user approval before anything is written. Use this ONLY for a new note or an intentional full rewrite; to change part of an existing note use apply_diff instead (it is safer and does not require resending the whole note). ALWAYS provide the COMPLETE intended file content with no truncation, no line numbers, and no placeholders such as \'...rest of note unchanged...\' — partial content will produce a broken note. Example: {"path": "Notes/New Idea.md", "content": "# New Idea\\n\\nFirst draft.\\n"}.',
       parameters: {
         type: 'object',
         properties: {
           path: {
             type: 'string',
             description:
-              "Path of the note/file to write, relative to the vault root (include the extension). Must stay inside the vault.",
+              'Path of the note/file to write, relative to the vault root (include the extension). Must stay inside the vault.',
           },
           content: {
             type: 'string',
@@ -162,7 +162,7 @@ export const AGENT_TOOLS: OpenAiTool[] = [
     function: {
       name: 'apply_diff',
       description:
-        'Make surgical, targeted edits to an existing note using one or more search/replace blocks. This is the PREFERRED way to modify existing notes. MUTATES THE VAULT and requires explicit user approval before anything is written. The SEARCH text must match the current note content exactly, including whitespace and indentation; if you are not certain of the exact content, read_file first. The \':start_line:\' line is REQUIRED and gives the 1-based line where the SEARCH block begins (this anchors the match and produces precise failure feedback). To make several edits in one note, concatenate multiple blocks in the \'diff\' string. If a block fails to match, the tool returns the closest match it found with line numbers and a similarity score; re-read the note and retry with corrected SEARCH text. Each block has this exact format:\n<<<<<<< SEARCH\n:start_line:[line_number]\n-------\n[exact existing content to find]\n=======\n[new content to replace it with]\n>>>>>>> REPLACE',
+        "Make surgical, targeted edits to an existing note using one or more search/replace blocks. This is the PREFERRED way to modify existing notes. MUTATES THE VAULT and requires explicit user approval before anything is written. The SEARCH text must match the current note content exactly, including whitespace and indentation; if you are not certain of the exact content, read_file first. The ':start_line:' line is REQUIRED and gives the 1-based line where the SEARCH block begins (this anchors the match and produces precise failure feedback). To make several edits in one note, concatenate multiple blocks in the 'diff' string. If a block fails to match, the tool returns the closest match it found with line numbers and a similarity score; re-read the note and retry with corrected SEARCH text. Each block has this exact format:\n<<<<<<< SEARCH\n:start_line:[line_number]\n-------\n[exact existing content to find]\n=======\n[new content to replace it with]\n>>>>>>> REPLACE",
       parameters: {
         type: 'object',
         properties: {

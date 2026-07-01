@@ -37,7 +37,7 @@ export interface DeviceLoginResult {
 export class DeviceAuthError extends Error {
   constructor(
     readonly kind: 'expired' | 'denied' | 'cancelled' | 'no_key',
-    message: string,
+    message: string
   ) {
     super(message)
     this.name = 'DeviceAuthError'
@@ -58,7 +58,10 @@ interface Envelope<T> {
 }
 
 function headers(o: Opts, auth?: { token: string; userId: number }): Record<string, string> {
-  const h: Record<string, string> = { 'Content-Type': 'application/json', Accept: 'application/json' }
+  const h: Record<string, string> = {
+    'Content-Type': 'application/json',
+    Accept: 'application/json',
+  }
   if (o.userAgent) h['User-Agent'] = o.userAgent
   if (auth) {
     h.Authorization = `Bearer ${auth.token}`
@@ -75,7 +78,7 @@ function headers(o: Opts, auth?: { token: string; userId: number }): Record<stri
 export class ApiResponseError extends Error {
   constructor(
     message: string,
-    readonly status: number,
+    readonly status: number
   ) {
     super(message)
     this.name = 'ApiResponseError'
@@ -91,17 +94,26 @@ async function unwrap<T>(res: Response, url: string): Promise<T> {
     /* non-JSON handled below */
   }
   if (!res.ok) {
-    throw new ApiResponseError(body?.message || `HTTP ${res.status} ${res.statusText} from ${url}`, res.status)
+    throw new ApiResponseError(
+      body?.message || `HTTP ${res.status} ${res.statusText} from ${url}`,
+      res.status
+    )
   }
   if (!body) throw new ApiResponseError(`non-JSON response from ${url}`, res.status)
   if (body.success === false) {
     throw new ApiResponseError(body.message || 'request rejected', res.status)
   }
-  if (body.data === undefined) throw new ApiResponseError(body.message || 'gateway returned no data', res.status)
+  if (body.data === undefined)
+    throw new ApiResponseError(body.message || 'gateway returned no data', res.status)
   return body.data
 }
 
-async function post<T>(url: string, h: Record<string, string>, body: unknown, signal?: AbortSignal): Promise<T> {
+async function post<T>(
+  url: string,
+  h: Record<string, string>,
+  body: unknown,
+  signal?: AbortSignal
+): Promise<T> {
   const res = await fetch(url, {
     method: 'POST',
     headers: h,
@@ -122,8 +134,17 @@ export function deviceAuthStart(o: Opts, signal?: AbortSignal): Promise<DeviceAu
 }
 
 /** POST /api/cli/device-auth-poll — one poll (public, no auth). */
-export function deviceAuthPoll(o: Opts, deviceCode: string, signal?: AbortSignal): Promise<DeviceAuthPollResp> {
-  return post(`${adminApiBase(o.baseUrl)}/cli/device-auth-poll`, headers(o), { device_code: deviceCode }, signal)
+export function deviceAuthPoll(
+  o: Opts,
+  deviceCode: string,
+  signal?: AbortSignal
+): Promise<DeviceAuthPollResp> {
+  return post(
+    `${adminApiBase(o.baseUrl)}/cli/device-auth-poll`,
+    headers(o),
+    { device_code: deviceCode },
+    signal
+  )
 }
 
 const TOKEN_STATUS_ENABLED = 1
@@ -144,19 +165,26 @@ export async function resolveRelayKey(
   o: Opts,
   accessToken: string,
   userId: number,
-  signal?: AbortSignal,
+  signal?: AbortSignal
 ): Promise<string> {
   const auth = { token: accessToken, userId }
-  const list = await get<{ items?: TokenSummary[] }>(`${adminApiBase(o.baseUrl)}/token/`, headers(o, auth), signal)
+  const list = await get<{ items?: TokenSummary[] }>(
+    `${adminApiBase(o.baseUrl)}/token/`,
+    headers(o, auth),
+    signal
+  )
   const pick = (list.items ?? []).find((t) => t.status === TOKEN_STATUS_ENABLED)
   if (!pick) {
-    throw new DeviceAuthError('no_key', 'No enabled API key on the account — create one at https://app.everyapi.ai.')
+    throw new DeviceAuthError(
+      'no_key',
+      'No enabled API key on the account — create one at https://app.everyapi.ai.'
+    )
   }
   const keyResp = await post<{ key?: string }>(
     `${adminApiBase(o.baseUrl)}/token/${pick.id}/key`,
     headers(o, auth),
     null,
-    signal,
+    signal
   )
   if (!keyResp.key) throw new DeviceAuthError('no_key', 'The gateway returned an empty key.')
   return keyResp.key
@@ -196,11 +224,16 @@ async function oauthForm<T>(
   url: string,
   body: Record<string, string>,
   userAgent: string | undefined,
-  signal: AbortSignal,
+  signal: AbortSignal
 ): Promise<OAuthFormResult<T>> {
   const h: Record<string, string> = { 'Content-Type': 'application/x-www-form-urlencoded' }
   if (userAgent) h['User-Agent'] = userAgent
-  const res = await fetch(url, { method: 'POST', headers: h, body: new URLSearchParams(body).toString(), signal })
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: h,
+    body: new URLSearchParams(body).toString(),
+    signal,
+  })
   let data: OAuthFormResult<T>['data'] = {}
   try {
     data = JSON.parse(await res.text())
@@ -231,16 +264,21 @@ async function loginWithOAuth2Device(opts: {
     `${base}/device`,
     { client_id: opts.clientId, scope: 'api' },
     opts.userAgent,
-    opts.signal,
+    opts.signal
   )
   // Fall back to legacy when the routes are absent (404) or the client isn't
   // recognized (invalid_client / unauthorized_client). A transient non-2xx
   // (5xx) is a real error — don't mis-read its empty body as "unavailable" and
   // silently downgrade.
-  if (begin.status === 404 || begin.data.error === 'invalid_client' || begin.data.error === 'unauthorized_client') {
+  if (
+    begin.status === 404 ||
+    begin.data.error === 'invalid_client' ||
+    begin.data.error === 'unauthorized_client'
+  ) {
     throw new OAuthEndpointMissing()
   }
-  if (begin.data.error) throw new ApiResponseError(begin.data.error_description || begin.data.error, begin.status)
+  if (begin.data.error)
+    throw new ApiResponseError(begin.data.error_description || begin.data.error, begin.status)
   if (begin.status < 200 || begin.status >= 300) {
     throw new ApiResponseError(`oauth2 device: HTTP ${begin.status}`, begin.status)
   }
@@ -268,9 +306,13 @@ async function loginWithOAuth2Device(opts: {
     try {
       poll = await oauthForm<{ access_token: string; refresh_token?: string; expires_in?: number }>(
         `${base}/token`,
-        { grant_type: OAUTH_DEVICE_GRANT, device_code: start.device_code, client_id: opts.clientId },
+        {
+          grant_type: OAUTH_DEVICE_GRANT,
+          device_code: start.device_code,
+          client_id: opts.clientId,
+        },
         opts.userAgent,
-        opts.signal,
+        opts.signal
       )
     } catch (e) {
       // The user is mid-browser; a transport blip shouldn't kill sign-in.
@@ -285,8 +327,10 @@ async function loginWithOAuth2Device(opts: {
       intervalMs += 5000
       continue
     }
-    if (err === 'expired_token') throw new DeviceAuthError('expired', 'The code expired before you authorized — try again.')
-    if (err === 'access_denied') throw new DeviceAuthError('denied', 'Authorization was denied in the browser.')
+    if (err === 'expired_token')
+      throw new DeviceAuthError('expired', 'The code expired before you authorized — try again.')
+    if (err === 'access_denied')
+      throw new DeviceAuthError('denied', 'Authorization was denied in the browser.')
     if (err) throw new ApiResponseError(poll.data.error_description || err, poll.status)
     if (poll.data.access_token) {
       return {
@@ -317,10 +361,13 @@ export async function refreshDeviceToken(opts: {
     `${oauthBase(opts.baseUrl)}/token`,
     { grant_type: 'refresh_token', refresh_token: opts.refreshToken, client_id: opts.clientId },
     opts.userAgent,
-    signal,
+    signal
   )
   if (r.data.error || !r.data.access_token) {
-    throw new ApiResponseError(r.data.error_description || r.data.error || 'refresh failed', r.status)
+    throw new ApiResponseError(
+      r.data.error_description || r.data.error || 'refresh failed',
+      r.status
+    )
   }
   return {
     apiKey: r.data.access_token,

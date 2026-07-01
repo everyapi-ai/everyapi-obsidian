@@ -50,7 +50,7 @@ function locateAllOccurrences(text: string, search: string): Occurrence[] {
 export function replaceAllOccurrences(
   text: string,
   search: string,
-  replace: string,
+  replace: string
 ): { text: string; count: number } {
   const all = locateAllOccurrences(text, search)
   let out = text
@@ -64,7 +64,7 @@ export function replaceAllOccurrences(
 export function insertAtLine(
   text: string,
   line: number,
-  content: string,
+  content: string
 ): { ok: true; text: string } | { ok: false; lineCount: number } {
   const lineCount = text.length === 0 ? 0 : text.split('\n').length
   if (line > lineCount + 1) return { ok: false, lineCount }
