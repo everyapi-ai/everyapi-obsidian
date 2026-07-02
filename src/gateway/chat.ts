@@ -4,7 +4,7 @@
 // need: text deltas everywhere, tool-call accumulation (VS Code Copilot
 // Chat) and a trailing usage block (the Obsidian panel) opt-in via callback.
 
-import { authHeaders, resolveSignal, safeReadText, type RequestOptions } from './http'
+import { authHeaders, redactSecrets, resolveSignal, safeReadText, type RequestOptions } from './http'
 
 /** A text segment of a multimodal message. */
 export interface TextPart {
@@ -142,7 +142,7 @@ export async function streamChat(input: StreamChatInput): Promise<void> {
   })
 
   if (!res.ok) {
-    const detail = res.body ? await safeReadText(res.body) : ''
+    const detail = res.body ? redactSecrets(await safeReadText(res.body)) : ''
     throw new Error(
       `HTTP ${res.status} ${res.statusText}${detail ? ` — ${detail.slice(0, 200)}` : ''}`
     )
@@ -315,7 +315,7 @@ export async function completeChat(input: CompleteChatInput): Promise<ChatResult
   })
 
   if (!res.ok) {
-    const detail = res.body ? await safeReadText(res.body) : ''
+    const detail = res.body ? redactSecrets(await safeReadText(res.body)) : ''
     throw new Error(
       `HTTP ${res.status} ${res.statusText}${detail ? ` — ${detail.slice(0, 200)}` : ''}`
     )
