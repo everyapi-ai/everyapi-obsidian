@@ -40,6 +40,16 @@ function envelopeError(body: Envelope<unknown>): string | null {
   if (body.code === false || body.success === false) {
     return body.message || 'gateway rejected the request'
   }
+  // Some deployments signal failure with a shape this client doesn't
+  // special-case above — e.g. a non-boolean error code (`{ code: 40100,
+  // message: "token revoked" }`) with no `data` and no boolean success/code
+  // flag. That's neither a recognized success (`data` present, or an explicit
+  // `code`/`success: true`) nor a recognized failure, so callers that fall
+  // back to an empty array on a non-array `data` would otherwise swallow it
+  // silently. Surface the message rather than degrade to "no data".
+  if (body.message && body.data === undefined && body.code !== true && body.success !== true) {
+    return body.message
+  }
   return null
 }
 

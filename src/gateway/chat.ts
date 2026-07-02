@@ -219,16 +219,35 @@ export async function streamChat(input: StreamChatInput): Promise<void> {
     const reader = res.body.getReader()
     const decoder = new TextDecoder()
     let buf = ''
-    while (true) {
-      const { value, done } = await reader.read()
-      if (done) break
-      buf += decoder.decode(value, { stream: true })
-      let lineEnd: number
-      while ((lineEnd = buf.indexOf('\n')) !== -1) {
-        const rawLine = buf.slice(0, lineEnd).replace(/\r$/, '')
-        buf = buf.slice(lineEnd + 1)
-        processLine(rawLine)
+    try {
+      while (true) {
+        const { value, done } = await reader.read()
+        if (done) break
+        buf += decoder.decode(value, { stream: true })
+        let lineEnd: number
+        while ((lineEnd = buf.indexOf('\n')) !== -1) {
+          const rawLine = buf.slice(0, lineEnd).replace(/\r$/, '')
+          buf = buf.slice(lineEnd + 1)
+          processLine(rawLine)
+        }
       }
+      // Flush the decoder: a stream that ends mid-character (a multi-byte
+      // UTF-8 sequence split across the transport's final read) leaves 1-3
+      // bytes buffered inside the TextDecoder's streaming state. Without this,
+      // they're silently discarded — no error, no warning — which usually
+      // corrupts the closing `data:` line's JSON and gets it dropped by
+      // `processLine`'s parse-failure `catch`, along with the final delta and
+      // any trailing usage block it carried.
+      buf += decoder.decode()
+    } catch (err) {
+      // The loop exited early — a mid-stream error frame thrown by
+      // `processLine`, or the request's `signal` aborting mid-read — so the
+      // body is only partially consumed. Cancel it so the underlying
+      // connection is torn down instead of left dangling.
+      await reader.cancel(err).catch(() => {})
+      throw err
+    } finally {
+      reader.releaseLock()
     }
     // Some upstreams close the connection after a `data:` line with no
     // trailing newline (`[DONE]` or a final delta). Flush the remainder so we

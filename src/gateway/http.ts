@@ -47,7 +47,13 @@ export async function getJson<T>(url: string, opts: RequestOptions): Promise<T> 
     signal: resolveSignal(opts) ?? null,
   })
   if (!res.ok) {
-    const detail = await res.text().catch(() => '')
+    // Bounded read, same as every other error path in this package (chat.ts,
+    // embeddings.ts) — a self-hosted deployment behind a misconfigured proxy
+    // can return a multi-MB HTML error page on a 5xx, and this helper backs
+    // high-frequency background callers (a VS Code status-bar balance poll,
+    // the MCP server's periodic reads) that shouldn't buffer all of it just
+    // to keep the first 200 characters.
+    const detail = res.body ? await safeReadText(res.body) : ''
     throw new Error(
       `HTTP ${res.status} ${res.statusText} from ${url}${detail ? ` — ${detail.slice(0, 200)}` : ''}`
     )
@@ -57,9 +63,9 @@ export async function getJson<T>(url: string, opts: RequestOptions): Promise<T> 
 
 /** Read up to ~1 kB of an error body for diagnostics, never throwing. */
 export async function safeReadText(stream: ReadableStream<Uint8Array>): Promise<string> {
+  const reader = stream.getReader()
   try {
     const decoder = new TextDecoder()
-    const reader = stream.getReader()
     let out = ''
     while (true) {
       const { value, done } = await reader.read()
@@ -70,5 +76,12 @@ export async function safeReadText(stream: ReadableStream<Uint8Array>): Promise<
     return out
   } catch {
     return ''
+  } finally {
+    // Reached either because the stream ended (`done`) or because the 1 kB
+    // cap cut the read short — in the latter case the body is only partially
+    // consumed. Cancel it so the connection is torn down instead of left
+    // dangling; harmless to call once the stream has already closed.
+    await reader.cancel().catch(() => {})
+    reader.releaseLock()
   }
 }
