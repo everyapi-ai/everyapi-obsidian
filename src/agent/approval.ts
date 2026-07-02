@@ -16,31 +16,51 @@ import { App, Modal } from 'obsidian'
  * true to proceed, false to deny.
  */
 export interface ApprovalGate {
-  /** Confirm writing `content` to `relPath` (preview is a diff/new-note preview). */
-  confirmWrite(relPath: string, preview: string, isNew: boolean): Promise<boolean>
-  /** Confirm applying the rendered diff to `relPath`. */
-  confirmDiff(relPath: string, preview: string): Promise<boolean>
+  /** Confirm writing `content` to `relPath` (preview is a diff/new-note
+   *  preview). `truncated` is true when `preview` omits part of the content
+   *  that will actually be written — the implementation must surface this
+   *  distinctly, not bury it as trailing text in the preview. */
+  confirmWrite(
+    relPath: string,
+    preview: string,
+    isNew: boolean,
+    truncated: boolean
+  ): Promise<boolean>
+  /** Confirm applying the rendered diff to `relPath`. `truncated` is true when
+   *  `preview` omits part of the diff that will actually be applied. */
+  confirmDiff(relPath: string, preview: string, truncated: boolean): Promise<boolean>
 }
 
 /** Obsidian-backed implementation: a modal showing the change + confirm/cancel. */
 export class ObsidianApprovalGate implements ApprovalGate {
   constructor(private readonly app: App) {}
 
-  confirmWrite(relPath: string, preview: string, isNew: boolean): Promise<boolean> {
+  confirmWrite(
+    relPath: string,
+    preview: string,
+    isNew: boolean,
+    truncated: boolean
+  ): Promise<boolean> {
     return this.ask(
       isNew ? `Create note ${relPath}?` : `Overwrite note ${relPath}?`,
       preview,
-      isNew ? 'Create note' : 'Overwrite note'
+      isNew ? 'Create note' : 'Overwrite note',
+      truncated
     )
   }
 
-  confirmDiff(relPath: string, preview: string): Promise<boolean> {
-    return this.ask(`Apply this edit to ${relPath}?`, preview, 'Apply edit')
+  confirmDiff(relPath: string, preview: string, truncated: boolean): Promise<boolean> {
+    return this.ask(`Apply this edit to ${relPath}?`, preview, 'Apply edit', truncated)
   }
 
-  private ask(title: string, preview: string, confirmLabel: string): Promise<boolean> {
+  private ask(
+    title: string,
+    preview: string,
+    confirmLabel: string,
+    truncated: boolean
+  ): Promise<boolean> {
     return new Promise<boolean>((resolve) => {
-      new ApprovalModal(this.app, title, preview, confirmLabel, resolve).open()
+      new ApprovalModal(this.app, title, preview, confirmLabel, truncated, resolve).open()
     })
   }
 }
@@ -58,6 +78,7 @@ class ApprovalModal extends Modal {
     private readonly title: string,
     private readonly preview: string,
     private readonly confirmLabel: string,
+    private readonly truncated: boolean,
     private readonly resolve: (approved: boolean) => void
   ) {
     super(app)
@@ -71,6 +92,17 @@ class ApprovalModal extends Modal {
       cls: 'everyapi-approval-hint',
       text: 'EveryAPI proposes the change below. Review it before approving — nothing is written until you do.',
     })
+    if (this.truncated) {
+      // This preview does NOT show everything that will be written — the tool
+      // executor caps preview length for renderability, but writes the full,
+      // untruncated content/diff on approval. Call this out as a distinct,
+      // visually prominent element rather than trailing text inside the
+      // scrollable <pre> block, which a user can easily miss.
+      contentEl.createDiv({
+        cls: 'everyapi-approval-warning',
+        text: 'Preview truncated: this is not the full content. The complete, untruncated version will be written if you approve.',
+      })
+    }
     // <pre> preserves the diff's whitespace/alignment; the agent never instructs
     // the user, this is only rendered DATA, so no markdown interpretation.
     contentEl.createEl('pre', { cls: 'everyapi-approval-preview' }).setText(this.preview)

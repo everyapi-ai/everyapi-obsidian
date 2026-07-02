@@ -1,4 +1,5 @@
 export * from './diff'
 export * from './edit'
 export * from './format'
+export * from './regex-safety'
 export * from './result'

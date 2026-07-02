@@ -13,10 +13,15 @@
 //      auto-escalate approval based on what a note said.
 //   5. Secrets: obvious credential-looking files are skipped on read/search
 //      (a vault has no shell secrets, but a synced repo might).
+//   6. Regex safety: search_text patterns are screened by a pure heuristic
+//      (regex-safety.ts) for the classic catastrophic-backtracking shape
+//      before compiling — Electron's renderer is single-threaded and a
+//      pathological RegExp.test() call cannot be interrupted or timed out.
 //
 // Every executor returns a structured result envelope and NEVER throws into the
 // loop, so the model can self-correct. The pure diff/match logic lives in
-// diff.ts; the line-numbering in format.ts — both unit-tested without Obsidian.
+// diff.ts; the line-numbering in format.ts; the regex guard in regex-safety.ts
+// — all unit-tested without Obsidian.
 
 import { App, TFile, TFolder, type Vault } from 'obsidian'
 
@@ -32,6 +37,7 @@ import {
 } from './diff'
 import { formatNumberedLines } from './format'
 import { resolveVaultPath } from './paths'
+import { unsafeSearchPatternReason } from './regex-safety'
 import type { ToolName } from './tools'
 
 // ---- caps ---------------------------------------------------------------------
@@ -180,6 +186,10 @@ export class VaultExecutors {
 
   private async searchText(pattern: string, path: string, glob?: string): Promise<ToolResult> {
     if (!pattern) return err("'pattern' is required.")
+    const unsafeReason = unsafeSearchPatternReason(pattern)
+    if (unsafeReason) {
+      return err(unsafeReason, 'Simplify the pattern (avoid nested repeated groups) and retry.')
+    }
     if (path === '') return err("'path' is required.", "Use '.' for the whole vault.")
     const base = resolveVaultPath(path)
     if (base === null) return outside(path)
@@ -274,7 +284,7 @@ export class VaultExecutors {
     if (file) oldText = await this.vault.read(file)
 
     const preview = isNew ? previewNewFile(content) : unifiedDiff(rel, oldText, content)
-    const approved = await this.approval.confirmWrite(rel, preview, isNew)
+    const approved = await this.approval.confirmWrite(rel, preview.text, isNew, preview.truncated)
     if (!approved) return denied('Propose a different change or explain why this edit is needed.')
 
     if (file) {
@@ -317,11 +327,16 @@ export class VaultExecutors {
     if (!applied.ok) return err(applied.error, applied.suggestion)
 
     const preview = unifiedDiff(rel, oldText, applied.text)
-    const approved = await this.approval.confirmDiff(rel, preview)
+    const approved = await this.approval.confirmDiff(rel, preview.text, preview.truncated)
     if (!approved) return denied('Propose a different edit or explain why this change is needed.')
 
     await this.vault.modify(file, crlf ? applied.text.replace(/\n/g, '\r\n') : applied.text)
-    return ok(`Applied ${applied.blocks} edit block(s) to ${rel}.`)
+    // Surface any location-uncertainty diagnostics from locateBlock (e.g. a
+    // match that landed far from the requested :start_line: hint) instead of
+    // silently dropping them — the model/user should see when a SEARCH block
+    // was ambiguous even though the edit still applied.
+    const warningNote = applied.warnings?.length ? `\n${applied.warnings.join('\n')}` : ''
+    return ok(`Applied ${applied.blocks} edit block(s) to ${rel}.${warningNote}`)
   }
 
   // ---- helpers --------------------------------------------------------------

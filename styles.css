@@ -329,6 +329,19 @@ body {
   font-size: var(--font-ui-smaller);
   margin-bottom: 10px;
 }
+/* Shown only when the preview below is not the full content/diff that will be
+   written — kept visually distinct (border + warning color) so it can't be
+   mistaken for routine trailing text inside the scrollable preview. */
+.everyapi-approval-warning {
+  color: var(--text-warning, var(--text-error));
+  background: var(--background-modifier-error, var(--background-secondary));
+  border: 1px solid var(--text-warning, var(--text-error));
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin-bottom: 10px;
+  font-size: var(--font-ui-small);
+  font-weight: 600;
+}
 .everyapi-approval-preview {
   max-height: 50vh;
   overflow: auto;

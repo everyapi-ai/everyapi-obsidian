@@ -43,7 +43,11 @@ export function normalizeVaultPath(p: string): string {
  */
 export function resolveVaultPath(rawPath: string): string | null {
   if (!rawPath) return null
-  if (rawPath.replace(/\\/g, '/').startsWith('/')) return null
+  const unified = rawPath.replace(/\\/g, '/')
+  // Reject POSIX absolute paths ('/etc/passwd') and Windows drive-letter
+  // absolute paths ('C:/Users/...', from a 'C:\\Users\\...' input already
+  // unified above) — both name a location outside the vault.
+  if (unified.startsWith('/') || /^[a-zA-Z]:\//.test(unified)) return null
   const normalized = normalizeVaultPath(rawPath)
   if (normalized === '..' || normalized.startsWith('../')) return null
   return normalized
