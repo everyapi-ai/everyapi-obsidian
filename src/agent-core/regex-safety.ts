@@ -76,13 +76,31 @@ export function hasNestedQuantifier(source: string): boolean {
       const sawInner = depth > 0 && (sawQuantifierAtDepth[depth] ?? false)
       if (depth > 0) sawQuantifierAtDepth.length = depth
       depth = Math.max(0, depth - 1)
+      // A group that (transitively) contains a quantifier makes its enclosing
+      // group count as containing one too, so an extra grouping level cannot
+      // hide a nested quantifier — e.g. `((a+))+`, `(?:(a+))+`, `((a+)x)+`.
+      if (sawInner && depth > 0) sawQuantifierAtDepth[depth] = true
       const next = source[i + 1]
       const nextIsQuantifier = next === '+' || next === '*' || next === '{'
       if (sawInner && nextIsQuantifier) return true
       continue
     }
-    if ((c === '+' || c === '*' || c === '{') && depth > 0) {
-      sawQuantifierAtDepth[depth] = true
+    if (depth > 0) {
+      if (c === '+' || c === '*') {
+        sawQuantifierAtDepth[depth] = true
+      } else if (c === '{') {
+        // Only an open-ended interval `{n,}` drives catastrophic backtracking
+        // when its group is repeated; a fixed-count `{n}`/`{n,m}` has bounded
+        // width, so it must not trip the guard (that would falsely reject safe
+        // patterns like `(a{3})+`). A `{` that is not a valid interval is a
+        // literal and counts for nothing.
+        const close = source.indexOf('}', i + 1)
+        const body = close === -1 ? '' : source.slice(i + 1, close)
+        if (/^\d+,?\d*$/.test(body)) {
+          if (/^\d+,$/.test(body)) sawQuantifierAtDepth[depth] = true
+          i = close // skip the interval body
+        }
+      }
     }
   }
   return false

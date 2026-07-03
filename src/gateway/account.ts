@@ -36,7 +36,7 @@ interface Envelope<T> {
   data?: T
 }
 
-function envelopeError(body: Envelope<unknown>): string | null {
+function envelopeError(body: Envelope<unknown>, apiKey?: string): string | null {
   // Same rationale as chat.ts/embeddings.ts: a 200-OK envelope-level failure
   // message is upstream/proxy-controlled the same way a non-2xx body is, and
   // this package is bundled into the MCP server (fetchWallet's caller
@@ -44,7 +44,7 @@ function envelopeError(body: Envelope<unknown>): string | null {
   // editor extension — a reflected Authorization header must not survive
   // into either.
   if (body.code === false || body.success === false) {
-    return redactSecrets(body.message || 'gateway rejected the request')
+    return redactSecrets(body.message || 'gateway rejected the request', apiKey)
   }
   // Some deployments signal failure with a shape this client doesn't
   // special-case above — e.g. a non-boolean error code (`{ code: 40100,
@@ -54,7 +54,7 @@ function envelopeError(body: Envelope<unknown>): string | null {
   // back to an empty array on a non-array `data` would otherwise swallow it
   // silently. Surface the message rather than degrade to "no data".
   if (body.message && body.data === undefined && body.code !== true && body.success !== true) {
-    return redactSecrets(body.message)
+    return redactSecrets(body.message, apiKey)
   }
   return null
 }
@@ -63,9 +63,10 @@ function envelopeError(body: Envelope<unknown>): string | null {
 export async function fetchWallet(opts: RequestOptions): Promise<WalletData> {
   const url = `${adminApiBase(opts.baseUrl)}/usage/token/`
   const body = await getJson<Envelope<WalletData>>(url, opts)
-  const err = envelopeError(body)
+  const err = envelopeError(body, opts.apiKey)
   if (err) throw new Error(err)
-  if (!body.data) throw new Error(redactSecrets(body.message || 'gateway returned no usage data'))
+  if (!body.data)
+    throw new Error(redactSecrets(body.message || 'gateway returned no usage data', opts.apiKey))
   return body.data
 }
 
@@ -73,7 +74,7 @@ export async function fetchWallet(opts: RequestOptions): Promise<WalletData> {
 export async function fetchLogs(opts: RequestOptions): Promise<LogRow[]> {
   const url = `${adminApiBase(opts.baseUrl)}/log/token`
   const body = await getJson<Envelope<LogRow[]>>(url, opts)
-  const err = envelopeError(body)
+  const err = envelopeError(body, opts.apiKey)
   if (err) throw new Error(err)
   return Array.isArray(body.data) ? body.data : []
 }
@@ -181,7 +182,7 @@ interface PricingRow {
 export async function fetchPricing(opts: RequestOptions): Promise<ModelPrice[]> {
   const url = `${adminApiBase(opts.baseUrl)}/pricing`
   const body = await getJson<Envelope<PricingRow[]>>(url, opts)
-  const err = envelopeError(body)
+  const err = envelopeError(body, opts.apiKey)
   if (err) throw new Error(err)
   const rows = Array.isArray(body.data) ? body.data : []
   return rows.flatMap((r) => {

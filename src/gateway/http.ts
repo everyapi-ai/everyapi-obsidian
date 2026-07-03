@@ -53,7 +53,7 @@ export async function getJson<T>(url: string, opts: RequestOptions): Promise<T> 
     // high-frequency background callers (a VS Code status-bar balance poll,
     // the MCP server's periodic reads) that shouldn't buffer all of it just
     // to keep the first 200 characters.
-    const detail = res.body ? redactSecrets(await safeReadText(res.body)) : ''
+    const detail = res.body ? redactSecrets(await safeReadText(res.body), opts.apiKey) : ''
     throw new Error(
       `HTTP ${res.status} ${res.statusText} from ${url}${detail ? ` — ${detail.slice(0, 200)}` : ''}`
     )
@@ -62,16 +62,22 @@ export async function getJson<T>(url: string, opts: RequestOptions): Promise<T> 
 }
 
 /**
- * Strip this package's `sk-everyapi-…` bearer token format out of arbitrary
- * text before it crosses a trust boundary (a thrown error message, which the
- * MCP server forwards verbatim as a tool result). Upstream error bodies are
- * attacker- or misconfiguration-controlled — e.g. a proxy that echoes request
- * headers on a 401 — so any credential reflected in one must not survive into
- * a log line or an LLM-visible tool result. Not a general secret scanner, just
- * the one token shape {@link authHeaders} sends.
+ * Strip credentials out of arbitrary text before it crosses a trust boundary
+ * (a thrown error message, which the MCP server forwards verbatim as a tool
+ * result). Upstream error bodies are attacker- or misconfiguration-controlled
+ * — e.g. a proxy that echoes request headers on a 401 — so any credential
+ * reflected in one must not survive into a log line or an LLM-visible tool
+ * result. Redacts both this package's `sk-everyapi-…` token shape AND the
+ * caller's literal key when supplied: self-hosted gateways (EVERYAPI_BASE_URL)
+ * commonly issue `sk-<random>` / `ev-…` keys with no `everyapi-` infix, which
+ * the format regex alone would miss.
  */
-export function redactSecrets(text: string): string {
-  return text.replace(/sk-everyapi-[A-Za-z0-9_-]+/g, '[REDACTED]')
+export function redactSecrets(text: string, apiKey?: string): string {
+  let out = text.replace(/sk-everyapi-[A-Za-z0-9_-]+/g, '[REDACTED]')
+  // Guard on a minimum length so a pathologically short/empty key can't blank
+  // out unrelated substrings of the message.
+  if (apiKey && apiKey.length >= 8) out = out.split(apiKey).join('[REDACTED]')
+  return out
 }
 
 /** Read up to ~1 kB of an error body for diagnostics, never throwing. */

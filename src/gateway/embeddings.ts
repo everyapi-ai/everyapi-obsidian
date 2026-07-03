@@ -59,7 +59,7 @@ export async function embed(input: EmbedInput): Promise<EmbedResult> {
   })
 
   if (!res.ok) {
-    const detail = res.body ? redactSecrets(await safeReadText(res.body)) : ''
+    const detail = res.body ? redactSecrets(await safeReadText(res.body), input.apiKey) : ''
     throw new Error(
       `HTTP ${res.status} ${res.statusText}${detail ? ` — ${detail.slice(0, 200)}` : ''}`
     )
@@ -74,7 +74,8 @@ export async function embed(input: EmbedInput): Promise<EmbedResult> {
   if (json.error) {
     throw new Error(
       redactSecrets(
-        typeof json.error === 'string' ? json.error : (json.error.message ?? 'upstream error')
+        typeof json.error === 'string' ? json.error : (json.error.message ?? 'upstream error'),
+        input.apiKey
       )
     )
   }

@@ -142,7 +142,7 @@ export async function streamChat(input: StreamChatInput): Promise<void> {
   })
 
   if (!res.ok) {
-    const detail = res.body ? redactSecrets(await safeReadText(res.body)) : ''
+    const detail = res.body ? redactSecrets(await safeReadText(res.body), input.apiKey) : ''
     throw new Error(
       `HTTP ${res.status} ${res.statusText}${detail ? ` — ${detail.slice(0, 200)}` : ''}`
     )
@@ -182,7 +182,8 @@ export async function streamChat(input: StreamChatInput): Promise<void> {
         redactSecrets(
           typeof chunk.error === 'string'
             ? chunk.error
-            : (chunk.error.message ?? 'upstream stream error')
+            : (chunk.error.message ?? 'upstream stream error'),
+          input.apiKey
         )
       )
     }
@@ -319,7 +320,7 @@ export async function completeChat(input: CompleteChatInput): Promise<ChatResult
   })
 
   if (!res.ok) {
-    const detail = res.body ? redactSecrets(await safeReadText(res.body)) : ''
+    const detail = res.body ? redactSecrets(await safeReadText(res.body), input.apiKey) : ''
     throw new Error(
       `HTTP ${res.status} ${res.statusText}${detail ? ` — ${detail.slice(0, 200)}` : ''}`
     )
@@ -337,7 +338,8 @@ export async function completeChat(input: CompleteChatInput): Promise<ChatResult
   if (json.error) {
     throw new Error(
       redactSecrets(
-        typeof json.error === 'string' ? json.error : (json.error.message ?? 'upstream error')
+        typeof json.error === 'string' ? json.error : (json.error.message ?? 'upstream error'),
+        input.apiKey
       )
     )
   }
