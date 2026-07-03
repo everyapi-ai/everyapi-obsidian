@@ -88,9 +88,12 @@ export function hasNestedQuantifier(source: string): boolean {
       // group count as containing one too, so an extra grouping level cannot
       // hide a nested quantifier — e.g. `((a+))+`, `(?:(a+))+`, `((a+)x)+`.
       if (sawInner && depth > 0) sawQuantifierAtDepth[depth] = true
-      const next = source[i + 1]
-      const nextIsQuantifier = next === '+' || next === '*' || next === '{'
-      if (sawInner && nextIsQuantifier) return true
+      // Only an UNBOUNDED outer quantifier (`+`, `*`, `{n,}`) is catastrophic
+      // when the group's body already repeats; a fixed-count `{n}`/`{n,m}` has
+      // bounded width and must not trip the guard — `(a+){2}` expands to the
+      // linear `a+a+`, mirroring the inner-interval rule above. Reuse the same
+      // helper the alternation check uses so both stay consistent.
+      if (sawInner && startsUnboundedQuantifier(source, i + 1)) return true
       continue
     }
     if (depth > 0) {

@@ -4,7 +4,13 @@
 // need: text deltas everywhere, tool-call accumulation (VS Code Copilot
 // Chat) and a trailing usage block (the Obsidian panel) opt-in via callback.
 
-import { authHeaders, redactSecrets, resolveSignal, safeReadText, type RequestOptions } from './http'
+import {
+  authHeaders,
+  redactSecrets,
+  resolveSignal,
+  safeReadText,
+  type RequestOptions,
+} from './http'
 
 /** A text segment of a multimodal message. */
 export interface TextPart {
@@ -155,8 +161,17 @@ export async function streamChat(input: StreamChatInput): Promise<void> {
   // (last-seen) value — some OpenAI-compatible upstreams emit usage on every
   // delta, not just the trailing chunk, but the callback contract is one-shot.
   let usage: ChatUsage | undefined
+  // Some OpenAI-compatible gateways reject a streaming request with HTTP 200
+  // and a bare top-level JSON error body (no `data:` framing at all), so the
+  // per-frame error check below never runs. Buffer the raw body until the first
+  // real SSE frame (capped) so that, if none ever arrives, we can still surface
+  // a top-level `error` the same way completeChat/embed do.
+  let sawData = false
+  let errorProbe = ''
+  const ERROR_PROBE_CAP = 64 * 1024
 
   const processLine = (rawLine: string): void => {
+    if (!sawData && errorProbe.length < ERROR_PROBE_CAP) errorProbe += rawLine + '\n'
     if (rawLine.startsWith(':')) return // SSE comment / keep-alive
     if (!rawLine.startsWith('data:')) return
     // The space after `data:` is optional per the SSE spec but always present
@@ -171,6 +186,7 @@ export async function streamChat(input: StreamChatInput): Promise<void> {
     } catch {
       return // malformed — likely a partially-flushed keep-alive
     }
+    sawData = true // a real SSE frame parsed — this is a genuine event-stream
 
     // A mid-stream error frame arrives after a 200, so the HTTP-level guard
     // above never fires. Throw so the streaming loop rejects and the caller
@@ -259,6 +275,32 @@ export async function streamChat(input: StreamChatInput): Promise<void> {
     // don't silently drop the last token.
     const trailing = buf.replace(/\r$/, '').trim()
     if (trailing) processLine(trailing)
+  }
+
+  // No SSE frame ever arrived: the upstream may have returned a plain JSON
+  // error body on a 200 (context-length exceeded, invalid model, quota, …).
+  // Surface a top-level `error` so the caller hits its error path instead of
+  // rendering an empty reply as a success — mirrors completeChat/embed.
+  if (!sawData) {
+    const probe = errorProbe.trim()
+    if (probe) {
+      let parsed: OpenAiChunk | undefined
+      try {
+        parsed = JSON.parse(probe) as OpenAiChunk
+      } catch {
+        parsed = undefined
+      }
+      if (parsed?.error) {
+        throw new Error(
+          redactSecrets(
+            typeof parsed.error === 'string'
+              ? parsed.error
+              : (parsed.error.message ?? 'upstream error'),
+            input.apiKey
+          )
+        )
+      }
+    }
   }
 
   if (input.onToolCall) {

@@ -249,7 +249,11 @@ async function oauthForm<T>(
   })
   let data: OAuthFormResult<T>['data'] = {}
   try {
-    data = JSON.parse(await res.text())
+    // JSON.parse('null') / '123' / '"x"' parse successfully but aren't objects;
+    // adopting one would make callers' `data.error` throw a TypeError. Only take
+    // a parsed object, so a `null`/primitive body falls back to the empty {}.
+    const parsed: unknown = JSON.parse(await res.text())
+    if (parsed && typeof parsed === 'object') data = parsed as OAuthFormResult<T>['data']
   } catch {
     /* non-JSON (e.g. a 404 HTML page) — resolved via status below */
   }
