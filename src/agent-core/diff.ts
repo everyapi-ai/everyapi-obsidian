@@ -23,6 +23,16 @@ export function parseDiffBlocks(diff: string): DiffBlock[] {
   return blocks
 }
 
+/** Count of `<<<<<<< SEARCH` block openers in a diff. `parseDiffBlocks` only
+ *  returns blocks that also carry a valid `:start_line:N` line and the full
+ *  `-------`/`=======`/`>>>>>>> REPLACE` frame, so any opener missing one of
+ *  those is silently skipped. Comparing this count against the parsed count is
+ *  how a caller detects malformed blocks that would otherwise be dropped while
+ *  the apply still reports success. */
+export function countSearchMarkers(diff: string): number {
+  return (diff.match(/^<<<<<<< SEARCH[ \t]*$/gm) ?? []).length
+}
+
 export interface BlockMatch {
   found: boolean
   index: number
@@ -58,30 +68,19 @@ export function locateBlock(text: string, block: DiffBlock): BlockMatch {
     return { found: true, index: offsetOfLine(text, block.startLine), length: 0 }
   }
   const window = block.search.split('\n').length
-  const anchor = offsetOfLine(text, Math.max(1, block.startLine - DIFF_BUFFER_LINES))
-  let at = text.indexOf(block.search, anchor)
-  if (at === -1) at = text.indexOf(block.search)
 
-  // Every exact occurrence of the SEARCH text, computed lazily — only once
-  // the near-anchor fast path below doesn't already resolve the match, so
-  // the common apply_diff call (found right where :start_line: says) still
-  // does at most the original one or two indexOf scans.
-  let offsets: number[] | undefined
-
-  if (at !== -1) {
-    const distance = Math.abs(lineNumberAt(text, at) - block.startLine)
-    if (distance <= DIFF_BUFFER_LINES) {
-      return { found: true, index: at, length: block.search.length }
-    }
-    // The only exact hit the anchored/whole-file search turned up lands far
-    // from the :start_line: hint. A duplicated SEARCH block elsewhere in the
-    // file must not silently win over reporting the mismatch — re-scan for
-    // every exact occurrence and prefer whichever one is actually near the
-    // hint before trusting this one.
-    offsets = allExactOffsets(text, block.search)
-    let best = at
-    let bestDistance = distance
-    for (const off of offsets) {
+  // Resolve the match by the exact occurrence NEAREST to the :start_line: hint,
+  // not the first one an anchored scan happens to reach. When the SEARCH text is
+  // unique this is trivially that single copy; when it repeats, nearest-to-hint
+  // is what stops the edit from landing on the wrong duplicate — including a
+  // duplicate sitting just BEFORE the hint but inside the anchor window, which a
+  // first-match-after-anchor search would otherwise pick over the real target.
+  const offsets = allExactOffsets(text, block.search)
+  if (offsets.length > 0) {
+    let best = offsets[0]!
+    let bestDistance = Math.abs(lineNumberAt(text, best) - block.startLine)
+    for (let i = 1; i < offsets.length; i++) {
+      const off = offsets[i]!
       const d = Math.abs(lineNumberAt(text, off) - block.startLine)
       if (d < bestDistance) {
         best = off
@@ -89,16 +88,19 @@ export function locateBlock(text: string, block: DiffBlock): BlockMatch {
       }
     }
     if (bestDistance <= DIFF_BUFFER_LINES) {
-      // Reaching here required finding a DIFFERENT occurrence than the
-      // initial hit, which only happens when the SEARCH text repeats in the
-      // file — flag the ambiguity even though it resolved to a confident,
-      // near-hint match.
-      return {
-        found: true,
-        index: best,
-        length: block.search.length,
-        warning: `found ${offsets.length} exact matches of the SEARCH text; selected the one at line ${lineNumberAt(text, best)}, nearest to the given start_line:${block.startLine}`,
+      // A distance-0 hit names the intended copy unambiguously (even if the
+      // SEARCH text also occurs elsewhere), so it stays warning-free like any
+      // clean match. Flag ambiguity only when duplicates exist AND the hint
+      // didn't land exactly on one — surfacing which copy proximity picked.
+      if (offsets.length > 1 && bestDistance > 0) {
+        return {
+          found: true,
+          index: best,
+          length: block.search.length,
+          warning: `found ${offsets.length} exact matches of the SEARCH text; selected the one at line ${lineNumberAt(text, best)}, nearest to the given start_line:${block.startLine}`,
+        }
       }
+      return { found: true, index: best, length: block.search.length }
     }
     if (offsets.length <= 1) {
       // Unambiguous: this is the only place the SEARCH text exists at all,
@@ -127,7 +129,7 @@ export function locateBlock(text: string, block: DiffBlock): BlockMatch {
     if (distance <= DIFF_BUFFER_LINES) {
       return { found: true, index: fz.index, length: fz.length }
     }
-    if (offsets && offsets.length > 1) {
+    if (offsets.length > 1) {
       // The fuzzy whole-file fallback just rediscovered one of the ambiguous
       // exact duplicates ruled out above (identical text always scores a
       // perfect 1.0) — don't silently accept it as if it were a confident
@@ -153,22 +155,21 @@ export function locateBlock(text: string, block: DiffBlock): BlockMatch {
     }
   }
 
-  if (at !== -1) {
+  if (offsets.length > 0) {
     // Exact matches exist, but none of them (nor the fuzzy fallback) landed
     // near the hint — report this as a miss with an explicit ambiguity count
     // instead of silently applying an arbitrary copy.
-    const finalOffsets = offsets ?? allExactOffsets(text, block.search)
     return {
       found: false,
       index: -1,
       length: 0,
       closest: {
-        from: lineNumberAt(text, at),
-        to: lineNumberAt(text, at) + window - 1,
+        from: lineNumberAt(text, offsets[0]!),
+        to: lineNumberAt(text, offsets[0]!) + window - 1,
         score: 100,
         text: block.search,
       },
-      warning: `found ${finalOffsets.length} exact match(es) of the SEARCH text, but none within ${DIFF_BUFFER_LINES} lines of the given start_line:${block.startLine}`,
+      warning: `found ${offsets.length} exact match(es) of the SEARCH text, but none within ${DIFF_BUFFER_LINES} lines of the given start_line:${block.startLine}`,
     }
   }
   return {
@@ -263,13 +264,29 @@ export type ApplyDiffResult =
   | { ok: false; error: string; suggestion?: string }
 
 export function applyDiff(relPath: string, oldText: string, diff: string): ApplyDiffResult {
-  const blocks = parseDiffBlocks(diff.replace(/\r\n/g, '\n'))
+  const normalized = diff.replace(/\r\n/g, '\n')
+  const blocks = parseDiffBlocks(normalized)
   if (blocks.length === 0) {
     return {
       ok: false,
       error: 'No valid SEARCH/REPLACE blocks found in diff.',
       suggestion:
         'Use the exact format: <<<<<<< SEARCH / :start_line:N / ------- / [search] / ======= / [replace] / >>>>>>> REPLACE',
+    }
+  }
+
+  // Guard against silently dropping a malformed block: parseDiffBlocks skips any
+  // `<<<<<<< SEARCH` opener that lacks `:start_line:N` or a complete frame, so a
+  // 3-block diff whose middle block omits the marker would parse to 2 and apply
+  // "successfully" with an edit silently missing. Fail loudly instead.
+  const markerCount = countSearchMarkers(normalized)
+  if (markerCount > blocks.length) {
+    const dropped = markerCount - blocks.length
+    return {
+      ok: false,
+      error: `apply_diff parsed only ${blocks.length} of ${markerCount} SEARCH block(s) in ${relPath}; ${dropped} malformed block(s) (missing the ":start_line:N" line or a -------/=======/>>>>>>> REPLACE marker) were dropped.`,
+      suggestion:
+        'Every block must be exactly: <<<<<<< SEARCH / :start_line:N / ------- / [search] / ======= / [replace] / >>>>>>> REPLACE. Fix the malformed block(s) and retry the full diff.',
     }
   }
 

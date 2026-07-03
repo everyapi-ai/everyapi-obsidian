@@ -5,6 +5,7 @@
 // then exchange the management access_token for the account's newest enabled
 // `sk-everyapi-…` relay key (the access_token alone can't relay).
 
+import { redactSecrets } from './http'
 import { adminApiBase } from './url'
 
 export interface DeviceAuthStartResp {
@@ -85,7 +86,7 @@ export class ApiResponseError extends Error {
   }
 }
 
-async function unwrap<T>(res: Response, url: string): Promise<T> {
+async function unwrap<T>(res: Response, url: string, secret?: string): Promise<T> {
   const text = await res.text().catch(() => '')
   let body: Envelope<T> | undefined
   try {
@@ -93,18 +94,22 @@ async function unwrap<T>(res: Response, url: string): Promise<T> {
   } catch {
     /* non-JSON handled below */
   }
+  // Server-supplied strings can echo the request's Authorization header (a
+  // proxy that reflects headers on a 5xx) or a relay key — scrub them before
+  // they reach an Error/log line, matching http.ts/chat.ts/account.ts.
+  const redact = (m: string): string => redactSecrets(m, secret)
   if (!res.ok) {
     throw new ApiResponseError(
-      body?.message || `HTTP ${res.status} ${res.statusText} from ${url}`,
+      redact(body?.message || `HTTP ${res.status} ${res.statusText} from ${url}`),
       res.status
     )
   }
   if (!body) throw new ApiResponseError(`non-JSON response from ${url}`, res.status)
   if (body.success === false) {
-    throw new ApiResponseError(body.message || 'request rejected', res.status)
+    throw new ApiResponseError(redact(body.message || 'request rejected'), res.status)
   }
   if (body.data === undefined)
-    throw new ApiResponseError(body.message || 'gateway returned no data', res.status)
+    throw new ApiResponseError(redact(body.message || 'gateway returned no data'), res.status)
   return body.data
 }
 
@@ -112,7 +117,8 @@ async function post<T>(
   url: string,
   h: Record<string, string>,
   body: unknown,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  secret?: string
 ): Promise<T> {
   const res = await fetch(url, {
     method: 'POST',
@@ -120,12 +126,17 @@ async function post<T>(
     body: body == null ? undefined : JSON.stringify(body),
     signal: signal ?? null,
   })
-  return unwrap<T>(res, url)
+  return unwrap<T>(res, url, secret)
 }
 
-async function get<T>(url: string, h: Record<string, string>, signal?: AbortSignal): Promise<T> {
+async function get<T>(
+  url: string,
+  h: Record<string, string>,
+  signal?: AbortSignal,
+  secret?: string
+): Promise<T> {
   const res = await fetch(url, { headers: h, signal: signal ?? null })
-  return unwrap<T>(res, url)
+  return unwrap<T>(res, url, secret)
 }
 
 /** POST /api/cli/device-auth-start — begin a flow (public, no auth). */
@@ -171,7 +182,8 @@ export async function resolveRelayKey(
   const list = await get<{ items?: TokenSummary[] }>(
     `${adminApiBase(o.baseUrl)}/token/`,
     headers(o, auth),
-    signal
+    signal,
+    accessToken
   )
   const pick = (list.items ?? []).find((t) => t.status === TOKEN_STATUS_ENABLED)
   if (!pick) {
@@ -184,7 +196,8 @@ export async function resolveRelayKey(
     `${adminApiBase(o.baseUrl)}/token/${pick.id}/key`,
     headers(o, auth),
     null,
-    signal
+    signal,
+    accessToken
   )
   if (!keyResp.key) throw new DeviceAuthError('no_key', 'The gateway returned an empty key.')
   return keyResp.key
@@ -278,7 +291,10 @@ async function loginWithOAuth2Device(opts: {
     throw new OAuthEndpointMissing()
   }
   if (begin.data.error)
-    throw new ApiResponseError(begin.data.error_description || begin.data.error, begin.status)
+    throw new ApiResponseError(
+      redactSecrets(begin.data.error_description || begin.data.error),
+      begin.status
+    )
   if (begin.status < 200 || begin.status >= 300) {
     throw new ApiResponseError(`oauth2 device: HTTP ${begin.status}`, begin.status)
   }
@@ -320,10 +336,13 @@ async function loginWithOAuth2Device(opts: {
       if (++transientFails > 3) throw e
       continue
     }
-    transientFails = 0
     const err = poll.data.error
-    if (err === 'authorization_pending') continue
+    if (err === 'authorization_pending') {
+      transientFails = 0
+      continue
+    }
     if (err === 'slow_down') {
+      transientFails = 0
       intervalMs += 5000
       continue
     }
@@ -331,13 +350,27 @@ async function loginWithOAuth2Device(opts: {
       throw new DeviceAuthError('expired', 'The code expired before you authorized — try again.')
     if (err === 'access_denied')
       throw new DeviceAuthError('denied', 'Authorization was denied in the browser.')
-    if (err) throw new ApiResponseError(poll.data.error_description || err, poll.status)
+    if (err)
+      throw new ApiResponseError(redactSecrets(poll.data.error_description || err), poll.status)
     if (poll.data.access_token) {
       return {
         apiKey: poll.data.access_token,
         refreshToken: poll.data.refresh_token,
         expiresAt: poll.data.expires_in ? Date.now() + poll.data.expires_in * 1000 : undefined,
       }
+    }
+    // No recognized OAuth error field and no token. A 2xx here is a spec-legal
+    // keep-polling. But a non-2xx with an empty/non-JSON body (a proxy 502, a
+    // backend restart) carries no `error`, so it would otherwise fall through
+    // and loop silently until the deadline — then mis-report "code expired"
+    // even though the user authorized. Count it against the same transient
+    // budget the thrown-fetch path uses, and surface the real cause once spent.
+    if (poll.status >= 200 && poll.status < 300) {
+      transientFails = 0
+      continue
+    }
+    if (++transientFails > 3) {
+      throw new ApiResponseError(`oauth2 token poll failed: HTTP ${poll.status}`, poll.status)
     }
   }
 }
@@ -365,7 +398,7 @@ export async function refreshDeviceToken(opts: {
   )
   if (r.data.error || !r.data.access_token) {
     throw new ApiResponseError(
-      r.data.error_description || r.data.error || 'refresh failed',
+      redactSecrets(r.data.error_description || r.data.error || 'refresh failed'),
       r.status
     )
   }

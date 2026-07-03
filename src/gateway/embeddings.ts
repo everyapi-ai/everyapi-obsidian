@@ -90,11 +90,27 @@ export async function embed(input: EmbedInput): Promise<EmbedResult> {
   // sparse response can't shift vectors onto the wrong input.
   const rows = Array.from<number[]>({ length: input.input.length })
   let filled = 0
-  for (const d of data) {
-    const i = d.index ?? -1
-    if (i >= 0 && i < rows.length && d.embedding && rows[i] === undefined) {
-      rows[i] = d.embedding
-      filled++
+  // Some OpenAI-compatible gateways return the vectors in request order but
+  // omit the per-item `index`. When NOTHING carries an index and the count
+  // matches, positional order IS the alignment — use it rather than rejecting a
+  // response that's trivially safe to line up. Index-based slotting still kicks
+  // in the moment any item carries an index (guarding out-of-order / sparse).
+  const anyIndexed = data.some((d) => typeof d.index === 'number')
+  if (!anyIndexed && data.length === input.input.length) {
+    for (let i = 0; i < data.length; i++) {
+      const emb = data[i]?.embedding
+      if (emb) {
+        rows[i] = emb
+        filled++
+      }
+    }
+  } else {
+    for (const d of data) {
+      const i = d.index ?? -1
+      if (i >= 0 && i < rows.length && d.embedding && rows[i] === undefined) {
+        rows[i] = d.embedding
+        filled++
+      }
     }
   }
   // A conforming endpoint returns exactly one vector per input; a dropped index
