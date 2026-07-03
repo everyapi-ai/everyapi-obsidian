@@ -175,11 +175,15 @@ export async function streamChat(input: StreamChatInput): Promise<void> {
     // A mid-stream error frame arrives after a 200, so the HTTP-level guard
     // above never fires. Throw so the streaming loop rejects and the caller
     // hits its error path instead of treating the truncated reply as success.
+    // Redact the same as the !res.ok branch above — a misconfigured upstream
+    // can echo the caller's own Authorization header into this frame too.
     if (chunk.error) {
       throw new Error(
-        typeof chunk.error === 'string'
-          ? chunk.error
-          : (chunk.error.message ?? 'upstream stream error')
+        redactSecrets(
+          typeof chunk.error === 'string'
+            ? chunk.error
+            : (chunk.error.message ?? 'upstream stream error')
+        )
       )
     }
 
@@ -328,9 +332,13 @@ export async function completeChat(input: CompleteChatInput): Promise<ChatResult
   }
   // Some gateways return HTTP 200 with a top-level `error` body instead of a
   // non-2xx status. Surface it rather than handing back an empty reply.
+  // Redact the same as the !res.ok branch above — this can echo the caller's
+  // own Authorization header back too.
   if (json.error) {
     throw new Error(
-      typeof json.error === 'string' ? json.error : (json.error.message ?? 'upstream error')
+      redactSecrets(
+        typeof json.error === 'string' ? json.error : (json.error.message ?? 'upstream error')
+      )
     )
   }
   return {

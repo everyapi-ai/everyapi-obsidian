@@ -2,7 +2,7 @@
 // client-side rollup of that log. All authenticated with the same
 // `sk-everyapi-` bearer token (TokenAuthReadOnly on the backend).
 
-import { getJson, type RequestOptions } from './http'
+import { getJson, redactSecrets, type RequestOptions } from './http'
 import { adminApiBase, QUOTA_PER_USD } from './url'
 
 export interface WalletData {
@@ -37,8 +37,14 @@ interface Envelope<T> {
 }
 
 function envelopeError(body: Envelope<unknown>): string | null {
+  // Same rationale as chat.ts/embeddings.ts: a 200-OK envelope-level failure
+  // message is upstream/proxy-controlled the same way a non-2xx body is, and
+  // this package is bundled into the MCP server (fetchWallet's caller
+  // forwards a thrown Error verbatim as an LLM-visible tool result) and every
+  // editor extension — a reflected Authorization header must not survive
+  // into either.
   if (body.code === false || body.success === false) {
-    return body.message || 'gateway rejected the request'
+    return redactSecrets(body.message || 'gateway rejected the request')
   }
   // Some deployments signal failure with a shape this client doesn't
   // special-case above — e.g. a non-boolean error code (`{ code: 40100,
@@ -48,7 +54,7 @@ function envelopeError(body: Envelope<unknown>): string | null {
   // back to an empty array on a non-array `data` would otherwise swallow it
   // silently. Surface the message rather than degrade to "no data".
   if (body.message && body.data === undefined && body.code !== true && body.success !== true) {
-    return body.message
+    return redactSecrets(body.message)
   }
   return null
 }
@@ -59,7 +65,7 @@ export async function fetchWallet(opts: RequestOptions): Promise<WalletData> {
   const body = await getJson<Envelope<WalletData>>(url, opts)
   const err = envelopeError(body)
   if (err) throw new Error(err)
-  if (!body.data) throw new Error(body.message || 'gateway returned no usage data')
+  if (!body.data) throw new Error(redactSecrets(body.message || 'gateway returned no usage data'))
   return body.data
 }
 

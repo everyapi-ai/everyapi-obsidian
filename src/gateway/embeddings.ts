@@ -4,7 +4,7 @@
 // opt-in codebase index (bulk-embed on an explicit user command) and by its
 // search_codebase tool (one short query embed at search time).
 
-import { authHeaders, resolveSignal, safeReadText, type RequestOptions } from './http'
+import { authHeaders, redactSecrets, resolveSignal, safeReadText, type RequestOptions } from './http'
 
 export interface EmbedUsage {
   prompt_tokens?: number
@@ -30,6 +30,7 @@ export interface EmbedResult {
 interface EmbeddingsResponse {
   data?: Array<{ index?: number; embedding?: number[] }>
   usage?: EmbedUsage | null
+  error?: { message?: string; type?: string; code?: string } | string
 }
 
 /**
@@ -58,13 +59,25 @@ export async function embed(input: EmbedInput): Promise<EmbedResult> {
   })
 
   if (!res.ok) {
-    const detail = res.body ? await safeReadText(res.body) : ''
+    const detail = res.body ? redactSecrets(await safeReadText(res.body)) : ''
     throw new Error(
       `HTTP ${res.status} ${res.statusText}${detail ? ` — ${detail.slice(0, 200)}` : ''}`
     )
   }
 
   const json = (await res.json()) as EmbeddingsResponse
+  // Some gateways return HTTP 200 with a top-level `error` body instead of a
+  // non-2xx status (same pattern as chat.ts's completeChat/streamChat).
+  // Without this, `json.data` is absent and the code below would silently
+  // return an empty embeddings array as if the batch succeeded, instead of
+  // surfacing why nothing got embedded.
+  if (json.error) {
+    throw new Error(
+      redactSecrets(
+        typeof json.error === 'string' ? json.error : (json.error.message ?? 'upstream error')
+      )
+    )
+  }
   const data = json.data ?? []
   // No data at all (an empty input batch or an absent `data` field) is a
   // degenerate case with nothing to align — return empty rather than fabricate
