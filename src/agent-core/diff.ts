@@ -33,6 +33,67 @@ export function countSearchMarkers(diff: string): number {
   return (diff.match(/^<<<<<<< SEARCH[ \t]*$/gm) ?? []).length
 }
 
+/** Count of `<<<<<<< SEARCH` openers that `parseDiffBlocks` did NOT consume —
+ *  i.e. malformed blocks that would be silently dropped by an apply. Unlike
+ *  comparing `countSearchMarkers` against the parsed-block count, this does
+ *  not misfire when a VALID block's search/replace content itself contains a
+ *  raw `<<<<<<< SEARCH` line (editing a file that embeds diff markers — test
+ *  fixtures, docs about this very format): those lines sit inside a consumed
+ *  span and are payload, not dropped blocks. Expects `\n` line endings
+ *  (normalize `\r\n` first, as `parseDiffBlocks` requires anyway). */
+function countDroppedSearchMarkers(diff: string): number {
+  return countSearchMarkers(diff.replace(SEARCH_RE, ''))
+}
+
+/** Openers that begin a plausible block: `<<<<<<< SEARCH` immediately followed
+ *  by a `:start_line:` line. `parseDiffBlocks` can never parse MORE blocks
+ *  than this; parsing FEWER means a block with a missing frame marker made the
+ *  lazy SEARCH_RE span absorb a neighbouring block — the "merged garbage
+ *  block" failure the outside-span count alone cannot see, because both
+ *  openers land inside the one consumed span. */
+function countPlausibleSearchOpeners(diff: string): number {
+  return (diff.match(/^<<<<<<< SEARCH[ \t]*\n:start_line:/gm) ?? []).length
+}
+
+/**
+ * Guard against `parseDiffBlocks` silently mangling a malformed diff. Two
+ * distinct failure shapes are checked, and `null` means the diff is sound:
+ *
+ * - an opener the regex never consumed (e.g. a block missing its
+ *   `:start_line:` line) — that block would be silently skipped while the
+ *   rest applied "successfully";
+ * - an opener ABSORBED into a neighbouring block's span (a block missing its
+ *   `=======` or `>>>>>>> REPLACE` makes the lazy regex run through the next
+ *   block), which would apply a merged garbage block — writing literal diff
+ *   marker lines into the file — and report success.
+ *
+ * The one shape this deliberately tolerates: a valid block whose payload
+ *  contains a bare `<<<<<<< SEARCH` line NOT followed by `:start_line:`
+ * (editing a file that embeds diff markers). Payload that reproduces the full
+ * opener+`:start_line:` sequence still trips the absorbed-count — erring
+ * toward a loud false reject over silent corruption.
+ *
+ * Shared by `applyDiff` and the per-host executors that run their own apply
+ * loop, so the diagnostics cannot drift between clients.
+ */
+export function malformedDiffBlocksError(
+  normalizedDiff: string,
+  parsedCount: number,
+  relPath: string
+): { error: string; suggestion: string } | null {
+  const dropped = countDroppedSearchMarkers(normalizedDiff)
+  const absorbed = countPlausibleSearchOpeners(normalizedDiff) - parsedCount
+  if (dropped <= 0 && absorbed <= 0) return null
+  // The two counts can flag the SAME block (an unconsumed opener that also
+  // carries `:start_line:`), so report the larger, not the sum.
+  const malformed = Math.max(dropped, absorbed, 1)
+  return {
+    error: `apply_diff parsed ${parsedCount} SEARCH block(s) in ${relPath} but the diff contains ${malformed} more malformed block(s) (missing the ":start_line:N" line or a -------/=======/>>>>>>> REPLACE marker); applying would silently drop or merge them.`,
+    suggestion:
+      'Every block must be exactly: <<<<<<< SEARCH / :start_line:N / ------- / [search] / ======= / [replace] / >>>>>>> REPLACE. Fix the malformed block(s) and retry the full diff.',
+  }
+}
+
 export interface BlockMatch {
   found: boolean
   index: number
@@ -275,19 +336,11 @@ export function applyDiff(relPath: string, oldText: string, diff: string): Apply
     }
   }
 
-  // Guard against silently dropping a malformed block: parseDiffBlocks skips any
-  // `<<<<<<< SEARCH` opener that lacks `:start_line:N` or a complete frame, so a
-  // 3-block diff whose middle block omits the marker would parse to 2 and apply
-  // "successfully" with an edit silently missing. Fail loudly instead.
-  const markerCount = countSearchMarkers(normalized)
-  if (markerCount > blocks.length) {
-    const dropped = markerCount - blocks.length
-    return {
-      ok: false,
-      error: `apply_diff parsed only ${blocks.length} of ${markerCount} SEARCH block(s) in ${relPath}; ${dropped} malformed block(s) (missing the ":start_line:N" line or a -------/=======/>>>>>>> REPLACE marker) were dropped.`,
-      suggestion:
-        'Every block must be exactly: <<<<<<< SEARCH / :start_line:N / ------- / [search] / ======= / [replace] / >>>>>>> REPLACE. Fix the malformed block(s) and retry the full diff.',
-    }
+  // Guard against parseDiffBlocks silently mangling a malformed diff (dropped
+  // or absorbed blocks) — see malformedDiffBlocksError for the failure shapes.
+  const malformed = malformedDiffBlocksError(normalized, blocks.length, relPath)
+  if (malformed) {
+    return { ok: false, ...malformed }
   }
 
   let working = oldText

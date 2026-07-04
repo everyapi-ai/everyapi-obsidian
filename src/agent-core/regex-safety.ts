@@ -88,27 +88,35 @@ export function hasNestedQuantifier(source: string): boolean {
       // group count as containing one too, so an extra grouping level cannot
       // hide a nested quantifier — e.g. `((a+))+`, `(?:(a+))+`, `((a+)x)+`.
       if (sawInner && depth > 0) sawQuantifierAtDepth[depth] = true
-      // Only an UNBOUNDED outer quantifier (`+`, `*`, `{n,}`) is catastrophic
-      // when the group's body already repeats; a fixed-count `{n}`/`{n,m}` has
-      // bounded width and must not trip the guard — `(a+){2}` expands to the
-      // linear `a+a+`, mirroring the inner-interval rule above. Reuse the same
-      // helper the alternation check uses so both stay consistent.
-      if (sawInner && startsUnboundedQuantifier(source, i + 1)) return true
+      // Only a VARIABLE outer quantifier (`+`, `*`, `{n,}`, or `{n,m}` with
+      // m > n) is catastrophic when the group's body already repeats; a
+      // fixed-count `{n}` repeats exactly n times and must not trip the guard
+      // — `(a+){2}` expands to the linear `a+a+`, mirroring the inner-interval
+      // rule above. Reuse the same helper the alternation check uses so both
+      // stay consistent.
+      if (sawInner && startsVariableQuantifier(source, i + 1)) return true
       continue
     }
     if (depth > 0) {
       if (c === '+' || c === '*') {
         sawQuantifierAtDepth[depth] = true
       } else if (c === '{') {
-        // Only an open-ended interval `{n,}` drives catastrophic backtracking
-        // when its group is repeated; a fixed-count `{n}`/`{n,m}` has bounded
-        // width, so it must not trip the guard (that would falsely reject safe
-        // patterns like `(a{3})+`). A `{` that is not a valid interval is a
-        // literal and counts for nothing.
+        // An interval counts as an inner quantifier when its width can VARY:
+        // `{n,}` (open-ended) and `{n,m}` with m > n both let each iteration
+        // of the enclosing group consume a different amount, so `(a{1,3})+`
+        // has exponentially many ways to split a run — exactly like `(a+)+`.
+        // Only a fixed-count `{n}` (or degenerate `{n,n}`) expands to a
+        // linear string and must not trip the guard (`(a{3})+` is safe).
+        // A `{` that is not a valid interval is a literal and counts for
+        // nothing.
         const close = source.indexOf('}', i + 1)
         const body = close === -1 ? '' : source.slice(i + 1, close)
-        if (/^\d+,?\d*$/.test(body)) {
-          if (/^\d+,$/.test(body)) sawQuantifierAtDepth[depth] = true
+        const interval = /^(\d+)(?:,(\d*))?$/.exec(body)
+        if (interval) {
+          const [, min, max] = interval
+          if (max === '' || (max !== undefined && Number(max) > Number(min))) {
+            sawQuantifierAtDepth[depth] = true
+          }
           i = close // skip the interval body
         }
       }
@@ -119,16 +127,17 @@ export function hasNestedQuantifier(source: string): boolean {
 
 /**
  * Detects the alternation-overlap "evil regex" shape that hasNestedQuantifier
- * can't see: a group repeated by an UNBOUNDED quantifier (`+`, `*`, `{n,}`)
- * whose top-level alternatives can match the same input, so the engine has
- * exponentially many ways to split a run — e.g. `(a|a)+`, `(a|ab)+`, `(\w|\d)+`,
- * `(.|x)*`. Two alternatives "overlap" when one is empty, they are identical,
- * one is a string-prefix of the other, or (for single-atom alternatives) their
- * character sets intersect. Truly disjoint alternations like `(foo|bar)+`,
- * `(foo|flu)+`, or `(\d|\s)+` are NOT flagged, and an unquantified/finitely
- * repeated group (`(a|a)`, `(a|a){2}`) is safe and ignored. Like
- * hasNestedQuantifier, a cheap heuristic: it does not chase overlap hidden
- * inside a character class or across multi-atom branches (`(ab|a[bc])+`).
+ * can't see: a group repeated by a VARIABLE quantifier (`+`, `*`, `{n,}`, or
+ * `{n,m}` with m > n) whose top-level alternatives can match the same input,
+ * so the engine has exponentially many ways to split a run — e.g. `(a|a)+`,
+ * `(a|ab)+`, `(\w|\d)+`, `(.|x)*`, `(a|a){2,50}`. Two alternatives "overlap"
+ * when one is empty, they are identical, one is a string-prefix of the other,
+ * or (for single-atom alternatives) their character sets intersect. Truly
+ * disjoint alternations like `(foo|bar)+`, `(foo|flu)+`, or `(\d|\s)+` are NOT
+ * flagged, and an unquantified/fixed-count group (`(a|a)`, `(a|a){2}`) is safe
+ * and ignored. Like hasNestedQuantifier, a cheap heuristic: it does not chase
+ * overlap hidden inside a character class or across multi-atom branches
+ * (`(ab|a[bc])+`).
  */
 export function hasOverlappingAlternation(source: string): boolean {
   const openStack: number[] = []
@@ -154,8 +163,8 @@ export function hasOverlappingAlternation(source: string): boolean {
     if (c === ')') {
       const open = openStack.pop()
       if (open === undefined) continue // unbalanced ')' — ignore
-      if (!startsUnboundedQuantifier(source, i + 1)) continue
-      const inner = stripGroupPrefix(source.slice(open + 1, i))
+      if (!startsVariableQuantifier(source, i + 1)) continue
+      const inner = unwrapWholeGroups(source.slice(open + 1, i))
       const branches = topLevelBranches(inner)
       if (branches.length >= 2 && branchesOverlap(branches)) return true
     }
@@ -163,18 +172,67 @@ export function hasOverlappingAlternation(source: string): boolean {
   return false
 }
 
-/** True when position `i` begins an unbounded quantifier: `+`, `*`, or an
- *  open-ended `{n,}` interval. A fixed `{n}`/`{n,m}` repeats finitely and is
- *  not catastrophic, so it does not count. */
-function startsUnboundedQuantifier(source: string, i: number): boolean {
+/** True when position `i` begins a quantifier whose repetition count can
+ *  VARY: `+`, `*`, an open-ended `{n,}`, or a bounded-but-variable `{n,m}`
+ *  with m > n. Variability is what creates the ambiguous splits — an
+ *  overlapping alternation or nested quantifier repeated `{2,50}` times
+ *  backtracks catastrophically just like one repeated `+` times ('(a|a){2,50}'
+ *  freezes an engine at ~40 chars of input). Only a FIXED count `{n}` (or
+ *  degenerate `{n,n}`) repeats a single known number of times and is exempt —
+ *  `(a+){2}` expands to the linear `a+a+`. */
+function startsVariableQuantifier(source: string, i: number): boolean {
   const c = source[i]
   if (c === '+' || c === '*') return true
   if (c === '{') {
     const close = source.indexOf('}', i + 1)
     if (close === -1) return false
-    return /^\d+,$/.test(source.slice(i + 1, close))
+    const interval = /^(\d+)(?:,(\d*))?$/.exec(source.slice(i + 1, close))
+    if (!interval) return false
+    const [, min, max] = interval
+    return max === '' || (max !== undefined && Number(max) > Number(min))
   }
   return false
+}
+
+/** Peel redundant wrapper groups that span the WHOLE body — `((a|a))+`
+ *  backtracks exactly like `(a|a)+`, but the outer group's body has no
+ *  top-level `|`, so without unwrapping the alternation hides one level down
+ *  and the guard is trivially bypassed. Partial-span groups (`(x(a|a))+`) are
+ *  left alone — multi-atom branch analysis is out of scope by design. */
+function unwrapWholeGroups(inner: string): string {
+  let body = stripGroupPrefix(inner)
+  while (body.startsWith('(') && closingParenAt(body, 0) === body.length - 1) {
+    body = stripGroupPrefix(body.slice(1, -1))
+  }
+  return body
+}
+
+/** Index of the `)` closing the `(` at `open`, or -1 when unbalanced.
+ *  Tracks escapes and character classes like the other walkers here. */
+function closingParenAt(source: string, open: number): number {
+  let depth = 0
+  let inClass = false
+  for (let i = open; i < source.length; i++) {
+    const c = source[i]!
+    if (c === '\\') {
+      i++
+      continue
+    }
+    if (inClass) {
+      if (c === ']') inClass = false
+      continue
+    }
+    if (c === '[') {
+      inClass = true
+      continue
+    }
+    if (c === '(') depth++
+    else if (c === ')') {
+      depth--
+      if (depth === 0) return i
+    }
+  }
+  return -1
 }
 
 /** Strip a leading group modifier (`?:`, `?=`, `?!`, `?<=`, `?<!`, `?<name>`)
@@ -251,7 +309,15 @@ const METACHARS = '\\^$.|?*+()[]{}'
  *  null for anything with more structure (multi-atom, a `[...]` class, groups),
  *  which this heuristic does not analyse. */
 function atomPredicate(s: string): Atom | null {
-  if (s === '.') return { test: () => true, literal: null }
+  // `.` does NOT match line terminators (patterns compile without the `s`
+  // flag), so `(.|\n)*` — the standard "any char including newline" idiom —
+  // has genuinely disjoint branches and must not be flagged as overlapping.
+  if (s === '.') {
+    return {
+      test: (c) => c !== '\n' && c !== '\r' && c !== '\u2028' && c !== '\u2029',
+      literal: null,
+    }
+  }
   if (s.length === 1 && !METACHARS.includes(s)) return { test: (c) => c === s, literal: s }
   if (s.length === 2 && s[0] === '\\') {
     const e = s[1]!
@@ -268,6 +334,21 @@ function atomPredicate(s: string): Atom | null {
         return { test: (c) => /\s/.test(c), literal: null }
       case 'S':
         return { test: (c) => /\S/.test(c), literal: null }
+      // Control-character escapes denote the control char itself, not the
+      // letter after the backslash — `\n` is a newline, not a literal 'n'
+      // (treating it as 'n' made `.` overlap it and mis-flagged `(.|\n)*`).
+      case 'n':
+        return { test: (c) => c === '\n', literal: '\n' }
+      case 'r':
+        return { test: (c) => c === '\r', literal: '\r' }
+      case 't':
+        return { test: (c) => c === '\t', literal: '\t' }
+      case 'f':
+        return { test: (c) => c === '\f', literal: '\f' }
+      case 'v':
+        return { test: (c) => c === '\v', literal: '\v' }
+      case '0':
+        return { test: (c) => c === '\0', literal: '\0' }
       default:
         return { test: (c) => c === e, literal: e } // escaped literal, e.g. \. \+ \/
     }
