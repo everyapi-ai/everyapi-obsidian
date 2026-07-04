@@ -1,4 +1,4 @@
-import { linesTrimEqual, offsetOfLine } from './edit'
+import { linesTrimEqual, offsetOfLine, replaceAllOccurrences } from './edit'
 
 const FUZZY_THRESHOLD = 0.9
 const DIFF_BUFFER_LINES = 40
@@ -10,8 +10,18 @@ export interface DiffBlock {
   replace: string
 }
 
-const SEARCH_RE =
-  /<<<<<<< SEARCH\s*\n:start_line:\s*(\d+)\s*\n-------\s*\n([\s\S]*?)\n?=======\s*\n([\s\S]*?)\n?>>>>>>> REPLACE/g
+// Head of a block — the opener marker through the `:start_line:` token — kept
+// in ONE source string shared by SEARCH_RE and countPlausibleSearchOpeners.
+// The two MUST accept the same whitespace (`\s*` spans blank lines): a head
+// that parseDiffBlocks consumes but the counter doesn't see breaks the
+// counter's "can never parse MORE blocks than this" invariant, and the
+// malformed-block guard then waves a merged garbage block through.
+const OPENER_HEAD_SRC = '<<<<<<< SEARCH\\s*\\n:start_line:'
+
+const SEARCH_RE = new RegExp(
+  `${OPENER_HEAD_SRC}\\s*(\\d+)\\s*\\n-------\\s*\\n([\\s\\S]*?)\\n?=======\\s*\\n([\\s\\S]*?)\\n?>>>>>>> REPLACE`,
+  'g'
+)
 
 export function parseDiffBlocks(diff: string): DiffBlock[] {
   const blocks: DiffBlock[] = []
@@ -45,14 +55,19 @@ function countDroppedSearchMarkers(diff: string): number {
   return countSearchMarkers(diff.replace(SEARCH_RE, ''))
 }
 
-/** Openers that begin a plausible block: `<<<<<<< SEARCH` immediately followed
- *  by a `:start_line:` line. `parseDiffBlocks` can never parse MORE blocks
- *  than this; parsing FEWER means a block with a missing frame marker made the
- *  lazy SEARCH_RE span absorb a neighbouring block — the "merged garbage
- *  block" failure the outside-span count alone cannot see, because both
- *  openers land inside the one consumed span. */
+/** Openers that begin a plausible block: `<<<<<<< SEARCH` followed by a
+ *  `:start_line:` line. Built from OPENER_HEAD_SRC — the exact head SEARCH_RE
+ *  parses — so `parseDiffBlocks` can never parse MORE blocks than this;
+ *  parsing FEWER means a block with a missing frame marker made the lazy
+ *  SEARCH_RE span absorb a neighbouring block — the "merged garbage block"
+ *  failure the outside-span count alone cannot see, because both openers land
+ *  inside the one consumed span. Deliberately un-anchored like SEARCH_RE, so
+ *  payload reproducing the full head sequence still errs toward a loud false
+ *  reject over silent corruption. */
+const PLAUSIBLE_OPENER_RE = new RegExp(OPENER_HEAD_SRC, 'g')
+
 function countPlausibleSearchOpeners(diff: string): number {
-  return (diff.match(/^<<<<<<< SEARCH[ \t]*\n:start_line:/gm) ?? []).length
+  return (diff.match(PLAUSIBLE_OPENER_RE) ?? []).length
 }
 
 /**
@@ -324,7 +339,21 @@ export type ApplyDiffResult =
   | { ok: true; text: string; blocks: number; warnings?: string[] }
   | { ok: false; error: string; suggestion?: string }
 
-export function applyDiff(relPath: string, oldText: string, diff: string): ApplyDiffResult {
+export interface ApplyDiffOptions {
+  /** Replace EVERY exact occurrence of each block's SEARCH text (the line
+   *  anchor is irrelevant then) instead of the single anchored match — the
+   *  `replace_all` mode of the apply_diff tool. An empty-SEARCH insertion
+   *  block still takes the anchored path. Lives here rather than in a host's
+   *  own copy of the loop so every client applies the mode identically. */
+  replaceAll?: boolean
+}
+
+export function applyDiff(
+  relPath: string,
+  oldText: string,
+  diff: string,
+  opts: ApplyDiffOptions = {}
+): ApplyDiffResult {
   const normalized = diff.replace(/\r\n/g, '\n')
   const blocks = parseDiffBlocks(normalized)
   if (blocks.length === 0) {
@@ -350,6 +379,31 @@ export function applyDiff(relPath: string, oldText: string, diff: string): Apply
     const raw = blocks[bi]!
     const block =
       lineDelta !== 0 ? { ...raw, startLine: Math.max(1, raw.startLine + lineDelta) } : raw
+
+    if (opts.replaceAll && raw.search !== '') {
+      // Replace EVERY exact occurrence of the SEARCH block (CRLF/LF and
+      // trailing-whitespace tolerance applied per occurrence). The line
+      // anchor is irrelevant here, so don't shift the delta into it.
+      const applied = replaceAllOccurrences(working, raw.search, raw.replace)
+      if (applied.count === 0) {
+        const probe = locateBlock(working, block)
+        return {
+          ok: false,
+          error: `apply_diff block ${bi + 1} (replace_all) found no occurrence of the SEARCH text in ${relPath}.${
+            probe.closest
+              ? `\nClosest region (lines ${probe.closest.from}-${probe.closest.to}, ${probe.closest.score}% similar):\n${probe.closest.text}`
+              : ''
+          }${probe.warning ? `\n${probe.warning}` : ''}`,
+          suggestion:
+            'Re-read the file to get the exact current content, then retry with corrected SEARCH text.',
+        }
+      }
+      working = applied.text
+      // Net line shift = (occurrences) × (replace − search) line delta.
+      lineDelta += applied.count * (countNewlines(raw.replace) - countNewlines(raw.search))
+      continue
+    }
+
     const match = locateBlock(working, block)
     if (!match.found) {
       return {
