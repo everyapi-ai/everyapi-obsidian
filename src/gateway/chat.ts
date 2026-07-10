@@ -172,7 +172,10 @@ export async function streamChat(input: StreamChatInput): Promise<void> {
   // a top-level `error` the same way completeChat/embed do.
   let sawData = false
   let errorProbe = ''
-  const ERROR_PROBE_CAP = 64 * 1024
+  // 1 MiB: large enough to also recover a full non-SSE completion body below
+  // (not just a small error body), while still bounding a response that never
+  // frames a single `data:` line.
+  const ERROR_PROBE_CAP = 1024 * 1024
 
   const processLine = (rawLine: string): void => {
     if (!sawData && errorProbe.length < ERROR_PROBE_CAP) errorProbe += rawLine + '\n'
@@ -304,6 +307,41 @@ export async function streamChat(input: StreamChatInput): Promise<void> {
           )
         )
       }
+      // A gateway that ignored `stream: true` answers with a regular (non-SSE)
+      // 200 completion body — the reply is in choices[0].message.content (and/or
+      // tool_calls), not a `data:` delta frame — so nothing above emitted it.
+      // Surface it (text, tool calls, usage) so a non-streaming upstream isn't
+      // rendered as an empty success. Mirrors completeChat; OpenAiChunk carries
+      // `delta`, not `message`, so read through a completion-shaped cast.
+      const completion = parsed as unknown as
+        | {
+            choices?: Array<{
+              message?: {
+                content?: string
+                tool_calls?: Array<{ id?: string; function?: { name?: string; arguments?: string } }>
+              }
+            }>
+            usage?: ChatUsage | null
+          }
+        | undefined
+      const choiceMessage = completion?.choices?.[0]?.message
+      const message = choiceMessage?.content
+      if (typeof message === 'string' && message.length > 0) input.onTextDelta(message)
+      const toolCalls = choiceMessage?.tool_calls
+      if (input.onToolCall && Array.isArray(toolCalls)) {
+        for (const tc of toolCalls) {
+          if (!tc?.id || !tc.function?.name) continue
+          let args: unknown = {}
+          try {
+            args = tc.function.arguments ? JSON.parse(tc.function.arguments) : {}
+          } catch {
+            // Upstream emitted malformed arguments — pass the raw attempt through.
+            args = tc.function.arguments
+          }
+          input.onToolCall({ id: tc.id, name: tc.function.name, input: args })
+        }
+      }
+      if (completion?.usage) usage = completion.usage
     }
   }
 

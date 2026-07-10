@@ -18,7 +18,7 @@
 // /v1 endpoint. Text is streamed for live UI; tool_calls finalize at
 // end-of-stream exactly as loop.md's streaming accumulator prescribes.
 
-import { authHeaders } from '@everyapi-ai/gateway'
+import { authHeaders, redactSecrets } from '@everyapi-ai/gateway'
 
 import { resultToString } from './diff'
 import type { VaultExecutors } from './executors'
@@ -217,6 +217,10 @@ interface OpenAiStreamChunk {
     finish_reason?: string | null
   }>
   usage?: ChatUsage | null
+  // OpenAI-compatible gateways can return HTTP 200 and then signal a failure
+  // mid-stream as a JSON frame (context-length exceeded, quota, …). Surface it
+  // instead of dropping the frame and rendering a truncated reply as success.
+  error?: { message?: string; type?: string; code?: string } | string
 }
 
 async function streamOneTurn(
@@ -246,7 +250,10 @@ async function streamOneTurn(
   })
 
   if (!res.ok) {
-    const detail = await res.text().catch(() => '')
+    // Redact before surfacing: a misconfigured self-hosted proxy can echo the
+    // caller's own Authorization header into the error body (every sibling
+    // client — VS Code, the gateway helpers — redacts this boundary).
+    const detail = redactSecrets(await res.text().catch(() => ''), input.apiKey)
     throw new Error(
       `HTTP ${res.status} ${res.statusText}${detail ? ` — ${detail.slice(0, 200)}` : ''}`
     )
@@ -257,8 +264,15 @@ async function streamOneTurn(
   let usage: ChatUsage | undefined
   // Accumulate fragmented tool-call deltas keyed by their `index` slot.
   const acc = new Map<number, { id: string; name: string; argsBuf: string }>()
+  // Buffer the raw body until the first real SSE frame, so an HTTP-200 response
+  // whose body is a bare JSON `{"error":…}` (no `data:` framing) can still be
+  // surfaced instead of returning an empty reply as success. Mirrors streamChat.
+  let sawData = false
+  let errorProbe = ''
+  const ERROR_PROBE_CAP = 64 * 1024
 
   const processLine = (rawLine: string): void => {
+    if (!sawData && errorProbe.length < ERROR_PROBE_CAP) errorProbe += rawLine + '\n'
     if (rawLine.startsWith(':')) return
     if (!rawLine.startsWith('data:')) return
     const payload = rawLine.replace(/^data:\s?/, '').replace(/\s+$/, '')
@@ -268,6 +282,21 @@ async function streamOneTurn(
       chunk = JSON.parse(payload) as OpenAiStreamChunk
     } catch {
       return
+    }
+    sawData = true
+    // A mid-stream error frame arrives after HTTP 200, so the !res.ok guard
+    // never fired. Throw so the caller hits its error path instead of treating
+    // the truncated reply as a clean completion. Redact as the !res.ok branch
+    // does — a misconfigured upstream can echo the Authorization header here too.
+    if (chunk.error) {
+      throw new Error(
+        redactSecrets(
+          typeof chunk.error === 'string'
+            ? chunk.error
+            : (chunk.error.message ?? 'upstream stream error'),
+          input.apiKey
+        )
+      )
     }
     const choice = chunk.choices?.[0]
     const delta = choice?.delta
@@ -296,18 +325,54 @@ async function streamOneTurn(
     const reader = res.body.getReader()
     const decoder = new TextDecoder()
     let buf = ''
-    for (;;) {
-      const { value, done } = await reader.read()
-      if (done) break
-      buf += decoder.decode(value, { stream: true })
-      let nl: number
-      while ((nl = buf.indexOf('\n')) !== -1) {
-        processLine(buf.slice(0, nl).replace(/\r$/, ''))
-        buf = buf.slice(nl + 1)
+    try {
+      for (;;) {
+        const { value, done } = await reader.read()
+        if (done) break
+        buf += decoder.decode(value, { stream: true })
+        let nl: number
+        while ((nl = buf.indexOf('\n')) !== -1) {
+          processLine(buf.slice(0, nl).replace(/\r$/, ''))
+          buf = buf.slice(nl + 1)
+        }
       }
+    } catch (err) {
+      // A mid-stream error frame thrown by processLine (or an abort) left the
+      // body partially read — cancel it so the connection is torn down instead
+      // of left dangling.
+      await reader.cancel(err).catch(() => {})
+      throw err
+    } finally {
+      reader.releaseLock()
     }
     const trailing = buf.replace(/\r$/, '').trim()
     if (trailing) processLine(trailing)
+  }
+
+  // No SSE frame ever arrived: the upstream may have returned a plain JSON
+  // error body on a 200 (invalid model, quota, context-length, …). Surface it
+  // so the caller hits its error path instead of rendering an empty reply as a
+  // clean completion — mirrors @everyapi-ai/gateway streamChat.
+  if (!sawData) {
+    const probe = errorProbe.trim()
+    if (probe) {
+      let parsed: OpenAiStreamChunk | undefined
+      try {
+        parsed = JSON.parse(probe) as OpenAiStreamChunk
+      } catch {
+        parsed = undefined
+      }
+      if (parsed?.error) {
+        throw new Error(
+          redactSecrets(
+            typeof parsed.error === 'string'
+              ? parsed.error
+              : (parsed.error.message ?? 'upstream error'),
+            input.apiKey
+          )
+        )
+      }
+    }
   }
 
   // Finalize buffered tool calls. Backstop per loop.md: even if finish_reason

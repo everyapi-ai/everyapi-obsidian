@@ -115,12 +115,24 @@ export function hasNestedQuantifier(source: string): boolean {
       //   inner it is capped at (width choices)^m, so only an m past
       //   SMALL_BOUNDED_REPEAT_MAX is evil (`(a{1,3}){2,4}` ≤ 3^4 = 81 paths —
       //   safe; `(a+){2,30}` and `(a{1,3}){2,30}` are not);
-      // - fixed outer `{n}`/`{n,n}` expands to a linear string — never evil.
+      // - fixed outer `{n}`/`{n,n}`: over a linear/bounded inner it expands to a
+      //   linear string, but over an UNBOUNDED inner it is n back-to-back
+      //   unbounded quantifiers (`(.*a){50}` ≡ `.*a.*a…`) whose cost is ~L^n, so
+      //   a large n backtracks catastrophically — flag it past the same
+      //   SMALL_BOUNDED_REPEAT_MAX cap used for a variable interval (a small
+      //   fixed count like `(a+){2}` stays linear-enough and is left alone).
       if (sawInner !== INNER_NONE) {
         const q = quantifierAt(source, i + 1)
         if (q) {
           if (q.max === null) return true
           if (q.max > q.min && (sawInner === INNER_UNBOUNDED || q.max > SMALL_BOUNDED_REPEAT_MAX)) {
+            return true
+          }
+          if (
+            q.max === q.min &&
+            sawInner === INNER_UNBOUNDED &&
+            q.min > SMALL_BOUNDED_REPEAT_MAX
+          ) {
             return true
           }
         }

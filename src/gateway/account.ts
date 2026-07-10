@@ -186,7 +186,11 @@ export async function fetchPricing(opts: RequestOptions): Promise<ModelPrice[]> 
   if (err) throw new Error(err)
   const rows = Array.isArray(body.data) ? body.data : []
   return rows.flatMap((r) => {
-    if (!r.model_name || typeof r.model_ratio !== 'number') return []
+    // Drop unpriced models (ratio <= 0): the backend uses ratio 0 as an
+    // "unpriced / not sold" sentinel, and rendering it as a real $0.00 model
+    // misleads. Matches apps/landingpage/scripts/gen-pricing.mjs, which skips
+    // ratio <= 0.
+    if (!r.model_name || typeof r.model_ratio !== 'number' || r.model_ratio <= 0) return []
     const completionRatio = typeof r.completion_ratio === 'number' ? r.completion_ratio : 1
     return [
       {
