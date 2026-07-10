@@ -44,6 +44,13 @@ export function unsafeSearchPatternReason(pattern: string): string | null {
       'group whose alternatives overlap (e.g. "(a|a)+" or "(\\w|\\d)+").'
     )
   }
+  if (hasSequentialQuantifierAmbiguity(pattern)) {
+    return (
+      'Pattern looks like it can cause catastrophic backtracking: adjacent ' +
+      'unbounded quantifiers over overlapping characters followed by a required ' +
+      'atom (e.g. "a*a*a*c").'
+    )
+  }
   return null
 }
 
@@ -201,6 +208,88 @@ export function hasOverlappingAlternation(source: string): boolean {
     }
   }
   return false
+}
+
+/**
+ * Detects the ungrouped sequential-quantifier "evil regex" shape neither guard
+ * above can see: a run of two or more ADJACENT single atoms, each carrying an
+ * UNBOUNDED quantifier (`*`, `+`, or `{n,}`), whose character sets overlap AND
+ * that is followed by a REQUIRED atom which can fail — e.g. `a*a*a*…c`,
+ * `\w*\d*x`. The overlap lets a run of matching text be partitioned between the
+ * neighbouring quantifiers in input-length-many ways, and the failing required
+ * suffix forces the engine to try them all, driving quadratic-to-exponential
+ * backtracking with no group in sight.
+ *
+ * To avoid false positives on genuinely linear-time patterns, three shapes are
+ * deliberately NOT flagged:
+ * - a nullable/absent tail (`\w*\d*`, `.*\s*`, `a*a*` at end): with nothing
+ *   required after the run the engine matches greedily and never backtracks;
+ * - BOUNDED intervals (`\w{1,3}\d{1,3}`, `a{1,2}a{1,2}`): a `{n,m}` caps the
+ *   split count at a constant, so the run stays linear — mirroring the sibling
+ *   guards' SMALL_BOUNDED_REPEAT_MAX exemption (only unbounded atoms enter a run);
+ * - disjoint neighbours (`\s*\d*`, `\d+\.\d+`): non-overlapping atoms can't share
+ *   a run.
+ * `?` is not a quantifier here, and atoms with more structure (`[...]` classes,
+ * `(...)` groups) break the run rather than being analysed — a cheap heuristic.
+ */
+export function hasSequentialQuantifierAmbiguity(source: string): boolean {
+  // Source of the preceding UNBOUNDED-quantified atom while an overlapping run
+  // continues; null when the run is broken.
+  let prevAtom: string | null = null
+  // Length of the current run of adjacent overlapping unbounded-quantified atoms
+  // (>=2 means a partition-ambiguous run has formed).
+  let run = 0
+  let i = 0
+  while (i < source.length) {
+    const { src, end } = readAtom(source, i)
+    const q = quantifierAt(source, end)
+    // Only UNBOUNDED quantifiers create input-length-many partitions; a bounded
+    // `{n,m}` (max !== null) caps them at a constant and stays linear.
+    const unbounded = !!q && q.max === null
+    if (src !== null && unbounded) {
+      run = prevAtom !== null && atomsOverlap(prevAtom, src) ? run + 1 : 1
+      prevAtom = src
+    } else {
+      // The run ended. It only backtracks catastrophically when a REQUIRED atom
+      // (min repetition >= 1) follows and can fail, forcing every partition to be
+      // retried; a nullable/absent tail matches greedily in linear time.
+      if (run >= 2 && src !== null && (!q || q.min >= 1)) return true
+      run = 0
+      prevAtom = null
+    }
+    i = q ? q.end + 1 : end
+  }
+  return false
+}
+
+/** Read one regex atom starting at `i` (before any quantifier). Returns the
+ *  atom's source string ONLY for the single-atom shapes atomPredicate models
+ *  (a literal char, an escape `\x`, or `.`); `src` is null for classes, groups
+ *  and structural chars — which advance the cursor past the whole construct so
+ *  a run's adjacency can't be misread from a group/class interior. `end` is the
+ *  index just past the atom. */
+function readAtom(source: string, i: number): { src: string | null; end: number } {
+  const c = source[i]!
+  if (c === '\\') return { src: source.slice(i, i + 2), end: i + 2 }
+  if (c === '[') {
+    // Character class — skip to the matching `]`, honouring a leading `^`/`]`
+    // and escapes. Not a single atom this heuristic models.
+    let j = i + 1
+    if (source[j] === '^') j++
+    if (source[j] === ']') j++ // a `]` right after `[`/`[^` is a literal
+    while (j < source.length && source[j] !== ']') {
+      if (source[j] === '\\') j++
+      j++
+    }
+    return { src: null, end: j < source.length ? j + 1 : j }
+  }
+  if (c === '(') {
+    const close = closingParenAt(source, i)
+    return { src: null, end: close === -1 ? source.length : close + 1 }
+  }
+  if (c === '.') return { src: '.', end: i + 1 }
+  if (!METACHARS.includes(c)) return { src: c, end: i + 1 }
+  return { src: null, end: i + 1 } // structural/quantifier char with no atom
 }
 
 interface Quantifier {

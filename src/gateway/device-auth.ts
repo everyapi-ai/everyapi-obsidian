@@ -296,6 +296,10 @@ async function loginWithOAuth2Device(opts: {
   }
   if (begin.data.error)
     throw new ApiResponseError(
+      // The device-start request carries no secret (client_id is a public OAuth
+      // client identifier), so only the sk-everyapi- format regex applies —
+      // don't scrub the client_id, which a developer needs to diagnose a
+      // client-registration failure.
       redactSecrets(begin.data.error_description || begin.data.error),
       begin.status
     )
@@ -355,7 +359,10 @@ async function loginWithOAuth2Device(opts: {
     if (err === 'access_denied')
       throw new DeviceAuthError('denied', 'Authorization was denied in the browser.')
     if (err)
-      throw new ApiResponseError(redactSecrets(poll.data.error_description || err), poll.status)
+      throw new ApiResponseError(
+        redactSecrets(poll.data.error_description || err, start.device_code),
+        poll.status
+      )
     if (poll.data.access_token) {
       return {
         apiKey: poll.data.access_token,
@@ -402,7 +409,10 @@ export async function refreshDeviceToken(opts: {
   )
   if (r.data.error || !r.data.access_token) {
     throw new ApiResponseError(
-      redactSecrets(r.data.error_description || r.data.error || 'refresh failed'),
+      // Thread the live refresh_token so a proxy that reflects the request body
+      // into error_description cannot leak it (it isn't sk-everyapi-shaped, so
+      // the format regex alone would miss it), matching every other error path.
+      redactSecrets(r.data.error_description || r.data.error || 'refresh failed', opts.refreshToken),
       r.status
     )
   }

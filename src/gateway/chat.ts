@@ -133,7 +133,11 @@ export async function streamChat(input: StreamChatInput): Promise<void> {
     messages: input.messages,
     stream: true,
     ...(input.tools && input.tools.length ? { tools: input.tools } : {}),
-    ...(wantUsage ? { stream_options: { include_usage: true } } : {}),
+    // Always assert stream_options last so a caller-supplied
+    // modelOptions.stream_options can never survive (the doc promises it is
+    // reserved). `undefined` is dropped by JSON.stringify, so no key ships
+    // when usage isn't wanted.
+    stream_options: wantUsage ? { include_usage: true } : undefined,
   }
 
   const res = await fetch(`${input.baseUrl}/chat/completions`, {

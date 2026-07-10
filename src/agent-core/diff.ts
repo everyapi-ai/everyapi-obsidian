@@ -203,6 +203,18 @@ export function locateBlock(text: string, block: DiffBlock): BlockMatch {
   if (fz && fz.score >= FUZZY_THRESHOLD) {
     const distance = Math.abs(fz.line + 1 - block.startLine)
     if (distance <= DIFF_BUFFER_LINES) {
+      // The SEARCH text (ignoring trailing whitespace) matched more than one
+      // window; bestFuzzyWindow picked the copy nearest the hint. Surface which
+      // one — mirroring the exact-match path — unless the hint landed exactly on
+      // a copy (distance 0), which is unambiguous and stays warning-free.
+      if (fz.duplicates && fz.duplicates > 1 && distance > 0) {
+        return {
+          found: true,
+          index: fz.index,
+          length: fz.length,
+          warning: `found ${fz.duplicates} near-identical matches of the SEARCH text; selected the one at line ${fz.line + 1}, nearest to the given start_line:${block.startLine}`,
+        }
+      }
       return { found: true, index: fz.index, length: fz.length }
     }
     if (offsets.length > 1) {
@@ -275,6 +287,10 @@ interface FuzzyWindow {
   line: number
   score: number
   text: string
+  /** How many windows in the scanned range were trim-equal to the SEARCH text
+   *  (i.e. exact ignoring trailing whitespace). >1 means the SEARCH is
+   *  duplicated, so the caller should surface which copy proximity picked. */
+  duplicates?: number
 }
 
 export function bestFuzzyWindow(
@@ -286,30 +302,59 @@ export function bestFuzzyWindow(
   const searchLines = search.split('\n')
   const window = searchLines.length
   if (window > lines.length) return null
+  const anchor = Math.max(0, startLine - 1)
+
+  // File-wide count of windows trim-equal to the SEARCH (cheap — no Levenshtein),
+  // so the duplicate-ambiguity warning reflects the WHOLE file and not merely
+  // whichever sub-range the returned window came from. Without this, a SEARCH
+  // duplicated more than DIFF_BUFFER_LINES from the hint would be applied to the
+  // near copy with no warning, purely because the far copy fell outside the near
+  // scan's range.
+  let trimEqualTotal = 0
+  const lastWindow = lines.length - window
+  for (let i = 0; i <= lastWindow; i++) {
+    if (linesTrimEqual(lines, i, searchLines)) trimEqualTotal++
+  }
+
   const scan = (from: number, to: number): FuzzyWindow | null => {
     let best: FuzzyWindow | null = null
+    let bestDist = Number.POSITIVE_INFINITY
+    // Once any trim-equal (score-1) window is seen, no other window can beat it,
+    // so stop paying for similarity()/Levenshtein and only keep scanning the
+    // cheap trim-equal windows for the nearest-to-hint tiebreak. This restores
+    // the early-out the old `score >= 0.99` return gave, without reintroducing
+    // the first-in-iteration-order duplicate bug.
+    let foundPerfect = false
     const last = Math.min(to, lines.length - window)
     for (let i = Math.max(0, from); i <= last; i++) {
-      const start = offsetOfLine(text, i + 1)
+      const isTrimEqual = linesTrimEqual(lines, i, searchLines)
+      if (!isTrimEqual && foundPerfect) continue // can't beat a perfect score
       const chunk = lines.slice(i, i + window).join('\n')
-      if (linesTrimEqual(lines, i, searchLines))
-        return { index: start, length: chunk.length, line: i, score: 1, text: chunk }
-      const score = similarity(chunk, search)
-      if (!best || score > best.score) {
-        best = { index: start, length: chunk.length, line: i, score, text: chunk }
-        if (score >= 0.99) return best
+      const score = isTrimEqual ? 1 : similarity(chunk, search)
+      if (isTrimEqual) foundPerfect = true
+      const dist = Math.abs(i - anchor)
+      // Prefer the higher score; among equally-scored windows keep the one
+      // NEAREST the start_line hint, so a SEARCH block trim-equal (or ~identical)
+      // to several windows edits the copy the caller pointed at rather than the
+      // first in iteration order — mirroring the exact-match path above.
+      if (!best || score > best.score || (score === best.score && dist < bestDist)) {
+        best = { index: offsetOfLine(text, i + 1), length: chunk.length, line: i, score, text: chunk }
+        bestDist = dist
       }
     }
     return best
   }
-  const anchor = Math.max(0, startLine - 1)
+
   const near = scan(anchor - DIFF_BUFFER_LINES, anchor + window + DIFF_BUFFER_LINES)
-  if (near && near.score >= FUZZY_THRESHOLD) return near
-  if (lines.length > FUZZY_MAX_LINES) return near
-  const whole = scan(0, lines.length)
-  if (!near) return whole
-  if (!whole) return near
-  return whole.score > near.score ? whole : near
+  let result: FuzzyWindow | null
+  if (near && near.score >= FUZZY_THRESHOLD) result = near
+  else if (lines.length > FUZZY_MAX_LINES) result = near
+  else {
+    const whole = scan(0, lines.length)
+    result = !near ? whole : !whole ? near : whole.score > near.score ? whole : near
+  }
+  if (result) result.duplicates = trimEqualTotal
+  return result
 }
 
 export function similarity(a: string, b: string): number {
