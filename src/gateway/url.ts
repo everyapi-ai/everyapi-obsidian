@@ -35,6 +35,6 @@ export function fmtUsd(quota: number, perUsd: number = QUOTA_PER_USD): string {
   const rate = perUsd > 0 ? perUsd : QUOTA_PER_USD
   const usd = quota / rate
   if (usd === 0) return '$0'
-  if (Math.abs(usd) < 0.01) return `$${usd.toFixed(6)}`
-  return `$${usd.toFixed(4)}`
+  const decimals = Math.abs(usd) < 0.01 ? 6 : 4
+  return `$${usd.toFixed(decimals).replace(/\.?0+$/, '')}`
 }

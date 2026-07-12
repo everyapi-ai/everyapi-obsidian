@@ -1,7 +1,7 @@
 {
   "id": "everyapi",
   "name": "EveryAPI",
-  "version": "1.2.1",
+  "version": "1.3.0",
   "minAppVersion": "1.5.0",
   "description": "Chat with 240+ LLMs (Claude, GPT, Gemini, DeepSeek, …) in a side panel via the EveryAPI gateway. Ask with note context, insert replies into your note.",
   "author": "everyapi-ai",
