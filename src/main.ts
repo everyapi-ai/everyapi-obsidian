@@ -11,10 +11,11 @@
 // list, /api/usage/token/ for the balance, real SSE streaming for replies.
 
 import { fetchBalanceUsd, fetchQuotaPerUsd } from '@everyapi-ai/gateway'
-import { type Editor, Plugin, WorkspaceLeaf, addIcon } from 'obsidian'
+import { type Editor, Plugin, WorkspaceLeaf, addIcon, getLanguage } from 'obsidian'
 
 import { CLIENT_APP } from './constants'
 import { truncateNote } from './format'
+import { formatUsd, resolveLocale, setLocale, t } from './i18n'
 import { DEFAULT_SETTINGS, EveryApiSettings, EveryApiSettingTab } from './settings'
 import { ChatView, VIEW_TYPE_EVERYAPI } from './view'
 
@@ -64,14 +65,23 @@ export default class EveryApiPlugin extends Plugin {
 
   async onload(): Promise<void> {
     await this.loadSettings()
+    // getLanguage was added after our minimum supported Obsidian version; the
+    // runtime feature check preserves browser-locale then English fallback on
+    // older hosts where that export is absent.
+    setLocale(
+      resolveLocale(
+        typeof getLanguage === 'function' ? getLanguage : undefined,
+        typeof navigator === 'undefined' ? undefined : navigator.language
+      )
+    )
 
     addIcon('everyapi', EVERYAPI_ICON)
     this.registerView(VIEW_TYPE_EVERYAPI, (leaf) => new ChatView(leaf, this))
 
-    this.addRibbonIcon('everyapi', 'Open EveryAPI chat', () => void this.activateView())
+    this.addRibbonIcon('everyapi', t('ribbon.openChat'), () => void this.activateView())
     this.addCommand({
       id: 'open-chat',
-      name: 'Open chat panel',
+      name: t('command.openChat'),
       callback: () => void this.activateView(),
     })
 
@@ -97,27 +107,26 @@ export default class EveryApiPlugin extends Plugin {
     }
     editorCmd(
       'explain-selection',
-      'Explain selection or note',
+      t('command.explainSelection'),
       (text, isSel) =>
-        `Explain the following ${isSel ? 'selection' : 'note'} clearly and concisely:\n\n${text}`
+        t(isSel ? 'preset.explainSelection' : 'preset.explainNote', { text })
     )
     editorCmd(
       'improve-writing',
-      'Improve writing',
+      t('command.improveWriting'),
       (text, isSel) =>
-        `Improve the writing of the following ${isSel ? 'selection' : 'note'}, preserving meaning and markdown. Return only the rewritten text:\n\n${text}`
+        t(isSel ? 'preset.improveSelection' : 'preset.improveNote', { text })
     )
     editorCmd(
       'summarize-note',
-      'Summarize note',
-      (text) => `Summarize the following note in concise bullet points:\n\n${text}`,
+      t('command.summarizeNote'),
+      (text) => t('preset.summarizeNote', { text }),
       true
     )
     editorCmd(
       'continue-writing',
-      'Continue writing',
-      (text) =>
-        `Continue writing naturally from where this leaves off. Return only the continuation:\n\n${text}`,
+      t('command.continueWriting'),
+      (text) => t('preset.continueWriting', { text }),
       true
     )
 
@@ -125,7 +134,7 @@ export default class EveryApiPlugin extends Plugin {
 
     this.statusEl = this.addStatusBarItem()
     this.statusEl.addClass('mod-clickable', 'everyapi-status')
-    this.statusEl.setAttribute('aria-label', 'EveryAPI: open chat panel')
+    this.statusEl.setAttribute('aria-label', t('status.openChatAria'))
     this.statusEl.onClickEvent(() => void this.activateView())
     void this.refreshStatusBar(true)
   }
@@ -168,7 +177,7 @@ export default class EveryApiPlugin extends Plugin {
     const el = this.statusEl
     if (!el) return
     if (!this.settings.apiKey) {
-      el.setText('EveryAPI: not connected')
+      el.setText(t('status.notConnected'))
       return
     }
     const now = Date.now()
@@ -183,7 +192,7 @@ export default class EveryApiPlugin extends Plugin {
       // Resolve the deployment's real quota→USD peg so a retuned self-hosted
       // instance shows a correct balance, not the default-peg figure.
       const usd = await fetchBalanceUsd(opts, await fetchQuotaPerUsd(opts))
-      el.setText(usd === null ? 'EveryAPI' : `EveryAPI: $${usd.toFixed(2)}`)
+      el.setText(usd === null ? 'EveryAPI' : t('status.balance', { balance: formatUsd(usd) }))
     } catch {
       // Balance is decoration, not a feature gate — the panel keeps working
       // without it (e.g. self-hosted gateways predating /api/usage/token/).

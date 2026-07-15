@@ -28,6 +28,7 @@ import { runAgentLoop, type ChatUsage } from './agent/loop'
 import { AGENT_SYSTEM_PROMPT } from './agent/prompt'
 import { CLIENT_APP } from './constants'
 import { formatTokens, toBlockquote, trimHistoryByChars } from './format'
+import { t } from './i18n'
 import type EveryApiPlugin from './main'
 
 export const VIEW_TYPE_EVERYAPI = 'everyapi-chat'
@@ -47,11 +48,11 @@ interface ChatMessage {
   error?: string
 }
 
-const SUGGESTIONS = [
-  'Summarize this note in bullet points',
-  'Continue writing from where this note leaves off',
-  "What's unclear or missing in this note?",
-]
+const SUGGESTION_KEYS = [
+  'suggestion.summarize',
+  'suggestion.continueWriting',
+  'suggestion.reviewNote',
+] as const
 
 // Vault-priming digest sent on the first agent turn (Roo's environment_details):
 // how many file paths to list, how deep into the tree, and which folders to skip.
@@ -73,7 +74,7 @@ class ModelSuggestModal extends FuzzySuggestModal<GatewayModel> {
     private onPick: (id: string) => void
   ) {
     super(view.app)
-    this.setPlaceholder('Switch model…')
+    this.setPlaceholder(t('picker.switchModel'))
   }
   getItems(): GatewayModel[] {
     return this.models
@@ -125,7 +126,7 @@ export class ChatView extends ItemView {
 
   async onOpen(): Promise<void> {
     this.model = this.plugin.settings.defaultModel
-    this.addAction('plus', 'New chat', () => this.newChat())
+    this.addAction('plus', t('action.newChat'), () => this.newChat())
     // Keep the context chip honest as the user moves between notes.
     this.registerEvent(this.app.workspace.on('active-leaf-change', () => this.updateContextChip()))
     this.render()
@@ -158,23 +159,23 @@ export class ChatView extends ItemView {
   private renderOnboarding(root: HTMLElement): void {
     const card = root.createDiv({ cls: 'everyapi-onboard' })
     card.createDiv({ cls: 'everyapi-logo' }).createSpan({ cls: 'everyapi-logo-ring' })
-    card.createEl('h3', { text: 'Connect EveryAPI' })
+    card.createEl('h3', { text: t('onboarding.connectTitle') })
     card.createEl('p', {
-      text: 'One key for every model — Claude, GPT, Gemini, DeepSeek and 240+ more through a single gateway.',
+      text: t('onboarding.productDescription'),
     })
     const input = card.createEl('input', {
       type: 'password',
       placeholder: 'sk-everyapi-…',
     })
     const errEl = card.createDiv({ cls: 'everyapi-onboard-err' })
-    const btn = card.createEl('button', { text: 'Connect', cls: 'mod-cta' })
+    const btn = card.createEl('button', { text: t('onboarding.connect'), cls: 'mod-cta' })
     const submit = async () => {
       const key = input.value.trim()
       if (!key) {
-        errEl.setText('Paste your EveryAPI key first.')
+        errEl.setText(t('onboarding.keyRequired'))
         return
       }
-      btn.setText('Validating…')
+      btn.setText(t('onboarding.validating'))
       btn.toggleAttribute('disabled', true)
       try {
         // The real validation: a key that can list models can chat.
@@ -188,8 +189,10 @@ export class ChatView extends ItemView {
         this.render()
         void this.plugin.refreshStatusBar(true)
       } catch (e) {
-        errEl.setText(`Couldn't connect: ${e instanceof Error ? e.message : String(e)}`)
-        btn.setText('Connect')
+        errEl.setText(
+          t('onboarding.connectionFailed', { error: e instanceof Error ? e.message : String(e) })
+        )
+        btn.setText(t('onboarding.connect'))
         btn.toggleAttribute('disabled', false)
       }
     }
@@ -199,7 +202,7 @@ export class ChatView extends ItemView {
     })
     card.createDiv({
       cls: 'everyapi-onboard-hint',
-      text: "Create a key in the EveryAPI console under Access Tokens. It stays in this vault's plugin data.",
+      text: t('onboarding.keyHint'),
     })
   }
 
@@ -222,13 +225,14 @@ export class ChatView extends ItemView {
       empty.createDiv({ cls: 'everyapi-logo' }).createSpan({ cls: 'everyapi-logo-ring' })
       empty.createDiv({
         cls: 'everyapi-empty-text',
-        text: 'Ask with your current note as context. Replies can be inserted straight into the note.',
+        text: t('chat.empty'),
       })
       const sugs = empty.createDiv({ cls: 'everyapi-sugs' })
-      for (const s of SUGGESTIONS) {
+      for (const key of SUGGESTION_KEYS) {
+        const suggestion = t(key)
         sugs
-          .createEl('button', { cls: 'everyapi-sug', text: s })
-          .addEventListener('click', () => void this.send(s))
+          .createEl('button', { cls: 'everyapi-sug', text: suggestion })
+          .addEventListener('click', () => void this.send(suggestion))
       }
       return
     }
@@ -239,9 +243,12 @@ export class ChatView extends ItemView {
         cls: `everyapi-msg ${msg.role === 'user' ? 'is-user' : 'is-ai'}`,
       })
       const who = el.createDiv({ cls: 'everyapi-msg-who' })
-      who.createSpan({ text: msg.role === 'user' ? 'You' : msg.model || 'EveryAPI' })
+      who.createSpan({ text: msg.role === 'user' ? t('chat.you') : msg.model || 'EveryAPI' })
       if (msg.role === 'assistant' && msg.tokens) {
-        who.createSpan({ cls: 'everyapi-msg-meta', text: `${formatTokens(msg.tokens)} tok` })
+        who.createSpan({
+          cls: 'everyapi-msg-meta',
+          text: t('chat.tokens', { count: formatTokens(msg.tokens) }),
+        })
       }
       const bd = el.createDiv({ cls: 'everyapi-msg-body' })
       if (msg.role === 'assistant' && !(this.busy && isLast)) {
@@ -271,13 +278,13 @@ export class ChatView extends ItemView {
       if (msg.role === 'assistant' && msg.text && !(this.busy && isLast)) {
         const actions = el.createDiv({ cls: 'everyapi-actions' })
         actions
-          .createEl('button', { cls: 'everyapi-insert', text: 'Insert at cursor' })
+          .createEl('button', { cls: 'everyapi-insert', text: t('action.insertAtCursor') })
           .addEventListener('click', () => this.insertAtCursor(msg))
         actions
-          .createEl('button', { cls: 'everyapi-insert', text: 'Append as quote' })
+          .createEl('button', { cls: 'everyapi-insert', text: t('action.appendAsQuote') })
           .addEventListener('click', () => void this.appendAsQuote(msg))
         actions
-          .createEl('button', { cls: 'everyapi-insert', text: 'Copy' })
+          .createEl('button', { cls: 'everyapi-insert', text: t('action.copy') })
           .addEventListener('click', () => void this.copyReply(msg))
       }
     })
@@ -316,7 +323,7 @@ export class ChatView extends ItemView {
     const box = foot.createDiv({ cls: 'everyapi-box' })
 
     const ta = box.createEl('textarea', {
-      attr: { rows: '1', placeholder: 'Ask EveryAPI (with current note context)…' },
+      attr: { rows: '1', placeholder: t('input.placeholder') },
     })
     ta.value = this.draft
     ta.addEventListener('input', () => {
@@ -337,6 +344,7 @@ export class ChatView extends ItemView {
     // Model chip + send are real buttons so they're keyboard-focusable and
     // activate on Enter/Space (clickable spans are neither).
     this.modelChipEl = tools.createEl('button', { cls: 'everyapi-chip is-model' })
+    this.modelChipEl.setAttribute('aria-label', t('picker.switchModel'))
     this.modelChipEl.addEventListener('click', () => void this.openModelPicker())
     this.updateModelChip()
 
@@ -353,26 +361,26 @@ export class ChatView extends ItemView {
     if (!btn) return
     btn.toggleClass('is-busy', this.busy)
     setIcon(btn, this.busy ? 'square' : 'send')
-    btn.setAttribute('aria-label', this.busy ? 'Stop' : 'Send')
+    btn.setAttribute('aria-label', this.busy ? t('action.stop') : t('action.send'))
   }
 
   private updateContextChip(): void {
     const chip = this.contextChipEl
     if (!chip) return
     const file = this.app.workspace.getActiveFile()
-    chip.setText(file && file.extension === 'md' ? file.name : 'no note open')
+    chip.setText(file && file.extension === 'md' ? file.name : t('chat.noNoteOpen'))
     chip.toggleClass('is-off', !file || file.extension !== 'md')
   }
 
   private updateModelChip(): void {
-    this.modelChipEl?.setText(this.model || this.plugin.settings.defaultModel || 'model…')
+    this.modelChipEl?.setText(this.model || this.plugin.settings.defaultModel || t('chat.modelPlaceholder'))
   }
 
   private async openModelPicker(): Promise<void> {
     try {
       await this.ensureModels()
     } catch (e) {
-      new Notice(`EveryAPI: couldn't load models — ${e instanceof Error ? e.message : e}`)
+      new Notice(t('notice.modelsLoadFailed', { error: e instanceof Error ? e.message : String(e) }))
       return
     }
     new ModelSuggestModal(this, this.models, (id) => {
@@ -431,7 +439,7 @@ export class ChatView extends ItemView {
     this.updateSendButton()
     try {
       await this.ensureModels()
-      if (!this.model) throw new Error('the gateway returned no models')
+      if (!this.model) throw new Error(t('chat.noModels'))
 
       const envDigest = await this.buildEnvDigest()
       const history = trimHistoryByChars(
@@ -513,7 +521,9 @@ export class ChatView extends ItemView {
               render()
             } else {
               // Append the outcome once the call finishes, on the same line.
-              committed += ` — ${e.status === 'error' ? 'failed' : e.status}\n`
+              const status =
+                e.status === 'ok' ? t('tool.ok') : e.status === 'error' ? t('tool.failed') : t('tool.denied')
+              committed += ` — ${status}\n`
               render()
             }
           },
@@ -528,7 +538,7 @@ export class ChatView extends ItemView {
         // clean final answer so the user's note doesn't get the tool-step log.
         aiMsg.answer = result.text
         if (result.truncated) {
-          const note = `Stopped after ${result.iterations} tool iterations (budget reached).`
+          const note = t('chat.truncated', { iterations: result.iterations })
           aiMsg.text = `${aiMsg.text}\n\n${note}`
           aiMsg.answer = aiMsg.answer ? `${aiMsg.answer}\n\n${note}` : note
         }
@@ -537,7 +547,7 @@ export class ChatView extends ItemView {
         flushLive()
         aiMsg.text = committed.trimEnd()
         if (!isAbort(e)) {
-          aiMsg.error = e instanceof Error ? e.message : String(e)
+          aiMsg.error = t('chat.requestFailed', { error: e instanceof Error ? e.message : String(e) })
         } else if (aiMsg.text === '') {
           // Aborted before anything streamed — drop the empty assistant bubble
           // instead of rendering a model header with no body.
@@ -554,7 +564,7 @@ export class ChatView extends ItemView {
       this.messages.push({
         role: 'assistant',
         text: '',
-        error: e instanceof Error ? e.message : String(e),
+        error: t('chat.requestFailed', { error: e instanceof Error ? e.message : String(e) }),
       })
       // Nothing was sent (model resolution / note read failed before the
       // request) — give the user their question back so they can retry.
@@ -604,7 +614,7 @@ export class ChatView extends ItemView {
     const p = prompt.trim()
     if (!p) return
     if (!this.plugin.settings.apiKey) {
-      new Notice('EveryAPI: add your API key in settings first.')
+      new Notice(t('notice.apiKeyRequired'))
       return
     }
     void this.send(p)
@@ -622,13 +632,13 @@ export class ChatView extends ItemView {
   private insertAtCursor(msg: ChatMessage): void {
     const editor = this.activeEditor()
     if (!editor) {
-      new Notice('EveryAPI: open a note in edit mode to insert at the cursor.')
+      new Notice(t('notice.openEditorToInsert'))
       return
     }
     const text = (msg.answer ?? msg.text).trim()
     if (editor.somethingSelected()) editor.replaceSelection(text)
     else editor.replaceRange(text, editor.getCursor())
-    new Notice('EveryAPI: inserted into note.')
+    new Notice(t('notice.inserted'))
   }
 
   // Sidebar fallback: append the reply as a blockquote at the end of the
@@ -636,17 +646,17 @@ export class ChatView extends ItemView {
   private async appendAsQuote(msg: ChatMessage): Promise<void> {
     const file = this.app.workspace.getActiveFile()
     if (!file || file.extension !== 'md') {
-      new Notice('EveryAPI: open a markdown note first.')
+      new Notice(t('notice.openMarkdownNote'))
       return
     }
     const quoted = toBlockquote(msg.answer ?? msg.text)
     await this.app.vault.process(file, (data) => `${data.replace(/\n*$/, '')}\n\n${quoted}\n`)
-    new Notice(`EveryAPI: appended to ${file.name}.`)
+    new Notice(t('notice.appendedToNote', { file: file.name }))
   }
 
   private async copyReply(msg: ChatMessage): Promise<void> {
     await navigator.clipboard.writeText(msg.answer ?? msg.text)
-    new Notice('EveryAPI: copied reply to clipboard.')
+    new Notice(t('notice.copied'))
   }
 }
 

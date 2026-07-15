@@ -2,6 +2,7 @@ import { fetchModels, type GatewayModel } from '@everyapi-ai/gateway'
 import { App, PluginSettingTab, Setting, debounce } from 'obsidian'
 
 import { CLIENT_APP } from './constants'
+import { t } from './i18n'
 import type EveryApiPlugin from './main'
 
 export interface EveryApiSettings {
@@ -36,10 +37,8 @@ export class EveryApiSettingTab extends PluginSettingTab {
     containerEl.empty()
 
     new Setting(containerEl)
-      .setName('API key')
-      .setDesc(
-        "Create one in the EveryAPI console under Access Tokens. Stored in this vault's plugin data (plain JSON) — be careful syncing the vault somewhere untrusted with a live key."
-      )
+      .setName(t('settings.apiKey'))
+      .setDesc(t('settings.apiKeyDescription'))
       .addText((text) => {
         text.inputEl.type = 'password'
         text.inputEl.addClass('everyapi-key-input')
@@ -54,8 +53,8 @@ export class EveryApiSettingTab extends PluginSettingTab {
       })
 
     new Setting(containerEl)
-      .setName('Gateway base URL')
-      .setDesc("Leave default unless you're testing a staging endpoint.")
+      .setName(t('settings.gatewayBaseUrl'))
+      .setDesc(t('settings.gatewayBaseUrlDescription'))
       .addText((text) =>
         text
           .setPlaceholder(DEFAULT_SETTINGS.baseUrl)
@@ -78,10 +77,8 @@ export class EveryApiSettingTab extends PluginSettingTab {
   private async renderModelSetting(container: HTMLElement): Promise<void> {
     const s = this.plugin.settings
     const setting = new Setting(container)
-      .setName('Default model')
-      .setDesc(
-        'Model id used for new chats — switch per-chat from the model chip in the panel. Leave empty to use the first model the gateway lists.'
-      )
+      .setName(t('settings.defaultModel'))
+      .setDesc(t('settings.defaultModelDescription'))
 
     let models: GatewayModel[] = []
     if (s.apiKey) {
@@ -94,11 +91,11 @@ export class EveryApiSettingTab extends PluginSettingTab {
 
     if (models.length > 0) {
       setting.addDropdown((dd) => {
-        dd.addOption('', '(first the gateway lists)')
+        dd.addOption('', t('settings.firstGatewayModel'))
         for (const m of models) dd.addOption(m.id, m.id)
         // A previously-saved model that's no longer listed should still show.
         if (s.defaultModel && !models.some((m) => m.id === s.defaultModel)) {
-          dd.addOption(s.defaultModel, `${s.defaultModel} (saved)`)
+          dd.addOption(s.defaultModel, t('settings.savedModel', { model: s.defaultModel }))
         }
         dd.setValue(s.defaultModel)
         dd.onChange(async (value) => {

@@ -10,6 +10,8 @@
 
 import { App, Modal } from 'obsidian'
 
+import { t } from '../i18n'
+
 /**
  * How a mutating tool asks the user for permission. The view supplies a real
  * implementation backed by Obsidian modals; tests can inject a stub. Returns
@@ -42,15 +44,22 @@ export class ObsidianApprovalGate implements ApprovalGate {
     truncated: boolean
   ): Promise<boolean> {
     return this.ask(
-      isNew ? `Create note ${relPath}?` : `Overwrite note ${relPath}?`,
+      isNew
+        ? t('approval.createTitle', { path: relPath })
+        : t('approval.overwriteTitle', { path: relPath }),
       preview,
-      isNew ? 'Create note' : 'Overwrite note',
+      isNew ? t('approval.create') : t('approval.overwrite'),
       truncated
     )
   }
 
   confirmDiff(relPath: string, preview: string, truncated: boolean): Promise<boolean> {
-    return this.ask(`Apply this edit to ${relPath}?`, preview, 'Apply edit', truncated)
+    return this.ask(
+      t('approval.applyTitle', { path: relPath }),
+      preview,
+      t('approval.apply'),
+      truncated
+    )
   }
 
   private ask(
@@ -90,7 +99,7 @@ class ApprovalModal extends Modal {
     contentEl.addClass('everyapi-approval')
     contentEl.createDiv({
       cls: 'everyapi-approval-hint',
-      text: 'EveryAPI proposes the change below. Review it before approving — nothing is written until you do.',
+      text: t('approval.reviewHint'),
     })
     if (this.truncated) {
       // This preview does NOT show everything that will be written — the tool
@@ -100,7 +109,7 @@ class ApprovalModal extends Modal {
       // scrollable <pre> block, which a user can easily miss.
       contentEl.createDiv({
         cls: 'everyapi-approval-warning',
-        text: 'Preview truncated: this is not the full content. The complete, untruncated version will be written if you approve.',
+        text: t('approval.truncatedWarning'),
       })
     }
     // <pre> preserves the diff's whitespace/alignment; the agent never instructs
@@ -108,7 +117,7 @@ class ApprovalModal extends Modal {
     contentEl.createEl('pre', { cls: 'everyapi-approval-preview' }).setText(this.preview)
 
     const buttons = contentEl.createDiv({ cls: 'everyapi-approval-actions' })
-    const cancel = buttons.createEl('button', { text: 'Cancel' })
+    const cancel = buttons.createEl('button', { text: t('approval.cancel') })
     cancel.addEventListener('click', () => this.decide(false))
     const confirm = buttons.createEl('button', { text: this.confirmLabel, cls: 'mod-cta' })
     confirm.addEventListener('click', () => this.decide(true))
