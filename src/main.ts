@@ -105,17 +105,11 @@ export default class EveryApiPlugin extends Plugin {
         },
       })
     }
-    editorCmd(
-      'explain-selection',
-      t('command.explainSelection'),
-      (text, isSel) =>
-        t(isSel ? 'preset.explainSelection' : 'preset.explainNote', { text })
+    editorCmd('explain-selection', t('command.explainSelection'), (text, isSel) =>
+      t(isSel ? 'preset.explainSelection' : 'preset.explainNote', { text })
     )
-    editorCmd(
-      'improve-writing',
-      t('command.improveWriting'),
-      (text, isSel) =>
-        t(isSel ? 'preset.improveSelection' : 'preset.improveNote', { text })
+    editorCmd('improve-writing', t('command.improveWriting'), (text, isSel) =>
+      t(isSel ? 'preset.improveSelection' : 'preset.improveNote', { text })
     )
     editorCmd(
       'summarize-note',

@@ -41,8 +41,10 @@ const english = {
   'onboarding.keyRequired': 'Paste your EveryAPI key first.',
   'onboarding.validating': 'Validating…',
   'onboarding.connectionFailed': "Couldn't connect: {error}",
-  'onboarding.keyHint': "Create a key in the EveryAPI console under Access Tokens. It stays in this vault's plugin data.",
-  'chat.empty': 'Ask with your current note as context. Replies can be inserted straight into the note.',
+  'onboarding.keyHint':
+    "Create a key in the EveryAPI console under Access Tokens. It stays in this vault's plugin data.",
+  'chat.empty':
+    'Ask with your current note as context. Replies can be inserted straight into the note.',
   'suggestion.summarize': 'Summarize this note in bullet points',
   'suggestion.continueWriting': 'Continue writing from where this note leaves off',
   'suggestion.reviewNote': "What's unclear or missing in this note?",
@@ -94,30 +96,36 @@ const zhCN: TranslationCatalog = {
   'command.continueWriting': '继续写作',
   'preset.explainSelection': '请清晰简洁地解释以下选中内容：\n\n{text}',
   'preset.explainNote': '请清晰简洁地解释以下笔记：\n\n{text}',
-  'preset.improveSelection': '请在保留原意和 Markdown 的前提下改进以下选中内容的写作。仅返回改写后的文本：\n\n{text}',
-  'preset.improveNote': '请在保留原意和 Markdown 的前提下改进以下笔记的写作。仅返回改写后的文本：\n\n{text}',
+  'preset.improveSelection':
+    '请在保留原意和 Markdown 的前提下改进以下选中内容的写作。仅返回改写后的文本：\n\n{text}',
+  'preset.improveNote':
+    '请在保留原意和 Markdown 的前提下改进以下笔记的写作。仅返回改写后的文本：\n\n{text}',
   'preset.summarizeNote': '请用简洁的要点总结以下笔记：\n\n{text}',
   'preset.continueWriting': '请从以下笔记结束处自然续写。仅返回续写内容：\n\n{text}',
   'status.openChatAria': 'EveryAPI：打开聊天面板',
   'status.notConnected': 'EveryAPI：未连接',
   'status.balance': 'EveryAPI：{balance}',
   'settings.apiKey': 'API 密钥',
-  'settings.apiKeyDescription': '请在 EveryAPI 控制台的访问令牌中创建。密钥以纯 JSON 存储在此保险库的插件数据中；将保险库同步到不可信位置时请格外小心。',
+  'settings.apiKeyDescription':
+    '请在 EveryAPI 控制台的访问令牌中创建。密钥以纯 JSON 存储在此保险库的插件数据中；将保险库同步到不可信位置时请格外小心。',
   'settings.gatewayBaseUrl': '网关基础 URL',
   'settings.gatewayBaseUrlDescription': '除非正在测试预发布端点，否则请保留默认值。',
   'settings.defaultModel': '默认模型',
-  'settings.defaultModelDescription': '用于新聊天的模型 ID；可在面板中的模型标签里按聊天切换。留空则使用网关列出的第一个模型。',
+  'settings.defaultModelDescription':
+    '用于新聊天的模型 ID；可在面板中的模型标签里按聊天切换。留空则使用网关列出的第一个模型。',
   'settings.firstGatewayModel': '（网关列出的第一个）',
   'settings.savedModel': '{model}（已保存）',
   'picker.switchModel': '切换模型…',
   'action.newChat': '新建聊天',
   'onboarding.connectTitle': '连接 EveryAPI',
-  'onboarding.productDescription': '一个密钥即可通过单一网关使用所有模型——Claude、GPT、Gemini、DeepSeek 及另外 240 多个模型。',
+  'onboarding.productDescription':
+    '一个密钥即可通过单一网关使用所有模型——Claude、GPT、Gemini、DeepSeek 及另外 240 多个模型。',
   'onboarding.connect': '连接',
   'onboarding.keyRequired': '请先粘贴您的 EveryAPI 密钥。',
   'onboarding.validating': '正在验证…',
   'onboarding.connectionFailed': '无法连接：{error}',
-  'onboarding.keyHint': '请在 EveryAPI 控制台的访问令牌中创建密钥。它会保存在此保险库的插件数据中。',
+  'onboarding.keyHint':
+    '请在 EveryAPI 控制台的访问令牌中创建密钥。它会保存在此保险库的插件数据中。',
   'chat.empty': '使用当前笔记作为上下文提问。回复可直接插入笔记。',
   'suggestion.summarize': '用要点总结这篇笔记',
   'suggestion.continueWriting': '从这篇笔记结束处继续写作',
@@ -165,30 +173,38 @@ const japanese: TranslationCatalog = {
   'command.continueWriting': '文章を続ける',
   'preset.explainSelection': '次の選択範囲を分かりやすく簡潔に説明してください：\n\n{text}',
   'preset.explainNote': '次のノートを分かりやすく簡潔に説明してください：\n\n{text}',
-  'preset.improveSelection': '意味と Markdown を保ったまま、次の選択範囲の文章を改善してください。書き直した文章だけを返してください：\n\n{text}',
-  'preset.improveNote': '意味と Markdown を保ったまま、次のノートの文章を改善してください。書き直した文章だけを返してください：\n\n{text}',
+  'preset.improveSelection':
+    '意味と Markdown を保ったまま、次の選択範囲の文章を改善してください。書き直した文章だけを返してください：\n\n{text}',
+  'preset.improveNote':
+    '意味と Markdown を保ったまま、次のノートの文章を改善してください。書き直した文章だけを返してください：\n\n{text}',
   'preset.summarizeNote': '次のノートを簡潔な箇条書きで要約してください：\n\n{text}',
-  'preset.continueWriting': '次のノートの終わりから自然に書き続けてください。続きだけを返してください：\n\n{text}',
+  'preset.continueWriting':
+    '次のノートの終わりから自然に書き続けてください。続きだけを返してください：\n\n{text}',
   'status.openChatAria': 'EveryAPI：チャットパネルを開く',
   'status.notConnected': 'EveryAPI：未接続',
   'status.balance': 'EveryAPI：{balance}',
   'settings.apiKey': 'API キー',
-  'settings.apiKeyDescription': 'EveryAPI コンソールのアクセス トークンから作成してください。キーはこの保管庫のプラグインデータにプレーン JSON として保存されるため、信頼できない場所へ同期する場合は注意してください。',
+  'settings.apiKeyDescription':
+    'EveryAPI コンソールのアクセス トークンから作成してください。キーはこの保管庫のプラグインデータにプレーン JSON として保存されるため、信頼できない場所へ同期する場合は注意してください。',
   'settings.gatewayBaseUrl': 'ゲートウェイのベース URL',
-  'settings.gatewayBaseUrlDescription': 'ステージングエンドポイントをテストしている場合以外は、既定値のままにしてください。',
+  'settings.gatewayBaseUrlDescription':
+    'ステージングエンドポイントをテストしている場合以外は、既定値のままにしてください。',
   'settings.defaultModel': '既定のモデル',
-  'settings.defaultModelDescription': '新しいチャットに使用するモデル ID。パネルのモデルチップからチャットごとに切り替えられます。空欄の場合はゲートウェイが最初に返すモデルを使用します。',
+  'settings.defaultModelDescription':
+    '新しいチャットに使用するモデル ID。パネルのモデルチップからチャットごとに切り替えられます。空欄の場合はゲートウェイが最初に返すモデルを使用します。',
   'settings.firstGatewayModel': '（ゲートウェイが最初に返すモデル）',
   'settings.savedModel': '{model}（保存済み）',
   'picker.switchModel': 'モデルを切り替える…',
   'action.newChat': '新しいチャット',
   'onboarding.connectTitle': 'EveryAPI に接続',
-  'onboarding.productDescription': '1 つのキーで、単一のゲートウェイを通じて Claude、GPT、Gemini、DeepSeek など 240 以上のモデルを利用できます。',
+  'onboarding.productDescription':
+    '1 つのキーで、単一のゲートウェイを通じて Claude、GPT、Gemini、DeepSeek など 240 以上のモデルを利用できます。',
   'onboarding.connect': '接続',
   'onboarding.keyRequired': '最初に EveryAPI キーを貼り付けてください。',
   'onboarding.validating': '検証中…',
   'onboarding.connectionFailed': '接続できませんでした：{error}',
-  'onboarding.keyHint': 'EveryAPI コンソールのアクセス トークンからキーを作成してください。キーはこの保管庫のプラグインデータに保存されます。',
+  'onboarding.keyHint':
+    'EveryAPI コンソールのアクセス トークンからキーを作成してください。キーはこの保管庫のプラグインデータに保存されます。',
   'chat.empty': '現在のノートをコンテキストとして質問できます。回答はノートに直接挿入できます。',
   'suggestion.summarize': 'このノートを箇条書きで要約する',
   'suggestion.continueWriting': 'このノートの続きから自然に書く',
@@ -211,7 +227,8 @@ const japanese: TranslationCatalog = {
   'chat.noModels': 'ゲートウェイからモデルが返されませんでした。',
   'chat.requestFailed': 'リクエストに失敗しました：{error}',
   'notice.apiKeyRequired': 'EveryAPI：最初に設定で API キーを追加してください。',
-  'notice.openEditorToInsert': 'EveryAPI：カーソル位置に挿入するには、編集モードでノートを開いてください。',
+  'notice.openEditorToInsert':
+    'EveryAPI：カーソル位置に挿入するには、編集モードでノートを開いてください。',
   'notice.inserted': 'EveryAPI：ノートに挿入しました。',
   'notice.openMarkdownNote': 'EveryAPI：最初に Markdown ノートを開いてください。',
   'notice.appendedToNote': 'EveryAPI：{file} に追加しました。',
@@ -222,8 +239,10 @@ const japanese: TranslationCatalog = {
   'approval.overwrite': 'ノートを上書き',
   'approval.applyTitle': '{path} にこの編集を適用しますか？',
   'approval.apply': '編集を適用',
-  'approval.reviewHint': 'EveryAPI が以下の変更を提案しています。承認する前に確認してください。承認するまで何も書き込まれません。',
-  'approval.truncatedWarning': 'プレビューは切り詰められています。これは完全な内容ではありません。承認すると、完全で切り詰められていない版が書き込まれます。',
+  'approval.reviewHint':
+    'EveryAPI が以下の変更を提案しています。承認する前に確認してください。承認するまで何も書き込まれません。',
+  'approval.truncatedWarning':
+    'プレビューは切り詰められています。これは完全な内容ではありません。承認すると、完全で切り詰められていない版が書き込まれます。',
   'approval.cancel': 'キャンセル',
 }
 
@@ -236,30 +255,38 @@ const korean: TranslationCatalog = {
   'command.continueWriting': '계속 작성',
   'preset.explainSelection': '다음 선택 영역을 명확하고 간결하게 설명해 주세요:\n\n{text}',
   'preset.explainNote': '다음 노트를 명확하고 간결하게 설명해 주세요:\n\n{text}',
-  'preset.improveSelection': '의미와 Markdown을 유지하면서 다음 선택 영역의 글을 다듬어 주세요. 고쳐 쓴 텍스트만 반환하세요:\n\n{text}',
-  'preset.improveNote': '의미와 Markdown을 유지하면서 다음 노트의 글을 다듬어 주세요. 고쳐 쓴 텍스트만 반환하세요:\n\n{text}',
+  'preset.improveSelection':
+    '의미와 Markdown을 유지하면서 다음 선택 영역의 글을 다듬어 주세요. 고쳐 쓴 텍스트만 반환하세요:\n\n{text}',
+  'preset.improveNote':
+    '의미와 Markdown을 유지하면서 다음 노트의 글을 다듬어 주세요. 고쳐 쓴 텍스트만 반환하세요:\n\n{text}',
   'preset.summarizeNote': '다음 노트를 간결한 글머리표로 요약해 주세요:\n\n{text}',
-  'preset.continueWriting': '다음 노트가 끝나는 곳부터 자연스럽게 계속 작성해 주세요. 이어지는 내용만 반환하세요:\n\n{text}',
+  'preset.continueWriting':
+    '다음 노트가 끝나는 곳부터 자연스럽게 계속 작성해 주세요. 이어지는 내용만 반환하세요:\n\n{text}',
   'status.openChatAria': 'EveryAPI: 채팅 패널 열기',
   'status.notConnected': 'EveryAPI: 연결되지 않음',
   'status.balance': 'EveryAPI: {balance}',
   'settings.apiKey': 'API 키',
-  'settings.apiKeyDescription': 'EveryAPI 콘솔의 액세스 토큰에서 키를 만드세요. 키는 이 볼트의 플러그인 데이터에 일반 JSON으로 저장되므로 신뢰할 수 없는 곳에 볼트를 동기화할 때 주의하세요.',
+  'settings.apiKeyDescription':
+    'EveryAPI 콘솔의 액세스 토큰에서 키를 만드세요. 키는 이 볼트의 플러그인 데이터에 일반 JSON으로 저장되므로 신뢰할 수 없는 곳에 볼트를 동기화할 때 주의하세요.',
   'settings.gatewayBaseUrl': '게이트웨이 기본 URL',
-  'settings.gatewayBaseUrlDescription': '스테이징 엔드포인트를 테스트하는 경우가 아니면 기본값을 유지하세요.',
+  'settings.gatewayBaseUrlDescription':
+    '스테이징 엔드포인트를 테스트하는 경우가 아니면 기본값을 유지하세요.',
   'settings.defaultModel': '기본 모델',
-  'settings.defaultModelDescription': '새 채팅에 사용할 모델 ID입니다. 패널의 모델 칩에서 채팅별로 바꿀 수 있습니다. 비워 두면 게이트웨이가 처음 나열하는 모델을 사용합니다.',
+  'settings.defaultModelDescription':
+    '새 채팅에 사용할 모델 ID입니다. 패널의 모델 칩에서 채팅별로 바꿀 수 있습니다. 비워 두면 게이트웨이가 처음 나열하는 모델을 사용합니다.',
   'settings.firstGatewayModel': '(게이트웨이가 처음 나열한 모델)',
   'settings.savedModel': '{model} (저장됨)',
   'picker.switchModel': '모델 전환…',
   'action.newChat': '새 채팅',
   'onboarding.connectTitle': 'EveryAPI 연결',
-  'onboarding.productDescription': '하나의 키로 단일 게이트웨이를 통해 Claude, GPT, Gemini, DeepSeek 및 240개 이상의 모든 모델을 사용할 수 있습니다.',
+  'onboarding.productDescription':
+    '하나의 키로 단일 게이트웨이를 통해 Claude, GPT, Gemini, DeepSeek 및 240개 이상의 모든 모델을 사용할 수 있습니다.',
   'onboarding.connect': '연결',
   'onboarding.keyRequired': '먼저 EveryAPI 키를 붙여넣으세요.',
   'onboarding.validating': '확인 중…',
   'onboarding.connectionFailed': '연결할 수 없습니다: {error}',
-  'onboarding.keyHint': 'EveryAPI 콘솔의 액세스 토큰에서 키를 만드세요. 키는 이 볼트의 플러그인 데이터에 저장됩니다.',
+  'onboarding.keyHint':
+    'EveryAPI 콘솔의 액세스 토큰에서 키를 만드세요. 키는 이 볼트의 플러그인 데이터에 저장됩니다.',
   'chat.empty': '현재 노트를 컨텍스트로 질문하세요. 답변은 노트에 바로 삽입할 수 있습니다.',
   'suggestion.summarize': '이 노트를 글머리표로 요약하기',
   'suggestion.continueWriting': '이 노트가 끝난 곳부터 계속 작성하기',
@@ -293,8 +320,10 @@ const korean: TranslationCatalog = {
   'approval.overwrite': '노트 덮어쓰기',
   'approval.applyTitle': '{path}에 이 편집을 적용할까요?',
   'approval.apply': '편집 적용',
-  'approval.reviewHint': 'EveryAPI가 아래 변경을 제안합니다. 승인하기 전에 검토하세요. 승인하기 전에는 아무것도 기록되지 않습니다.',
-  'approval.truncatedWarning': '미리 보기가 잘렸습니다. 전체 내용이 아닙니다. 승인하면 완전하고 잘리지 않은 버전이 기록됩니다.',
+  'approval.reviewHint':
+    'EveryAPI가 아래 변경을 제안합니다. 승인하기 전에 검토하세요. 승인하기 전에는 아무것도 기록되지 않습니다.',
+  'approval.truncatedWarning':
+    '미리 보기가 잘렸습니다. 전체 내용이 아닙니다. 승인하면 완전하고 잘리지 않은 버전이 기록됩니다.',
   'approval.cancel': '취소',
 }
 
@@ -307,31 +336,40 @@ const spanish: TranslationCatalog = {
   'command.continueWriting': 'Continuar escribiendo',
   'preset.explainSelection': 'Explica la siguiente selección de forma clara y concisa:\n\n{text}',
   'preset.explainNote': 'Explica la siguiente nota de forma clara y concisa:\n\n{text}',
-  'preset.improveSelection': 'Mejora la redacción de la siguiente selección, conservando el significado y Markdown. Devuelve solo el texto reescrito:\n\n{text}',
-  'preset.improveNote': 'Mejora la redacción de la siguiente nota, conservando el significado y Markdown. Devuelve solo el texto reescrito:\n\n{text}',
+  'preset.improveSelection':
+    'Mejora la redacción de la siguiente selección, conservando el significado y Markdown. Devuelve solo el texto reescrito:\n\n{text}',
+  'preset.improveNote':
+    'Mejora la redacción de la siguiente nota, conservando el significado y Markdown. Devuelve solo el texto reescrito:\n\n{text}',
   'preset.summarizeNote': 'Resume la siguiente nota en viñetas concisas:\n\n{text}',
-  'preset.continueWriting': 'Continúa escribiendo de forma natural desde donde termina esta nota. Devuelve solo la continuación:\n\n{text}',
+  'preset.continueWriting':
+    'Continúa escribiendo de forma natural desde donde termina esta nota. Devuelve solo la continuación:\n\n{text}',
   'status.openChatAria': 'EveryAPI: abrir panel de chat',
   'status.notConnected': 'EveryAPI: sin conexión',
   'status.balance': 'EveryAPI: {balance}',
   'settings.apiKey': 'Clave de API',
-  'settings.apiKeyDescription': 'Cree una en la consola de EveryAPI, en Tokens de acceso. Se guarda como JSON sin cifrar en los datos del complemento de esta bóveda; tenga cuidado al sincronizar la bóveda en un lugar no confiable con una clave activa.',
+  'settings.apiKeyDescription':
+    'Cree una en la consola de EveryAPI, en Tokens de acceso. Se guarda como JSON sin cifrar en los datos del complemento de esta bóveda; tenga cuidado al sincronizar la bóveda en un lugar no confiable con una clave activa.',
   'settings.gatewayBaseUrl': 'URL base de la puerta de enlace',
-  'settings.gatewayBaseUrlDescription': 'Mantenga el valor predeterminado salvo que esté probando un endpoint de ensayo.',
+  'settings.gatewayBaseUrlDescription':
+    'Mantenga el valor predeterminado salvo que esté probando un endpoint de ensayo.',
   'settings.defaultModel': 'Modelo predeterminado',
-  'settings.defaultModelDescription': 'ID de modelo para los chats nuevos; cámbielo en cada chat desde la etiqueta de modelo del panel. Déjelo vacío para usar el primer modelo que enumere la puerta de enlace.',
+  'settings.defaultModelDescription':
+    'ID de modelo para los chats nuevos; cámbielo en cada chat desde la etiqueta de modelo del panel. Déjelo vacío para usar el primer modelo que enumere la puerta de enlace.',
   'settings.firstGatewayModel': '(el primero que enumera la puerta de enlace)',
   'settings.savedModel': '{model} (guardado)',
   'picker.switchModel': 'Cambiar modelo…',
   'action.newChat': 'Chat nuevo',
   'onboarding.connectTitle': 'Conectar EveryAPI',
-  'onboarding.productDescription': 'Una clave para todos los modelos: Claude, GPT, Gemini, DeepSeek y más de 240 a través de una sola puerta de enlace.',
+  'onboarding.productDescription':
+    'Una clave para todos los modelos: Claude, GPT, Gemini, DeepSeek y más de 240 a través de una sola puerta de enlace.',
   'onboarding.connect': 'Conectar',
   'onboarding.keyRequired': 'Primero pegue su clave de EveryAPI.',
   'onboarding.validating': 'Validando…',
   'onboarding.connectionFailed': 'No se pudo conectar: {error}',
-  'onboarding.keyHint': 'Cree una clave en la consola de EveryAPI, en Tokens de acceso. Se guarda en los datos del complemento de esta bóveda.',
-  'chat.empty': 'Pregunte usando la nota actual como contexto. Las respuestas se pueden insertar directamente en la nota.',
+  'onboarding.keyHint':
+    'Cree una clave en la consola de EveryAPI, en Tokens de acceso. Se guarda en los datos del complemento de esta bóveda.',
+  'chat.empty':
+    'Pregunte usando la nota actual como contexto. Las respuestas se pueden insertar directamente en la nota.',
   'suggestion.summarize': 'Resume esta nota en viñetas',
   'suggestion.continueWriting': 'Continúa escribiendo desde donde termina esta nota',
   'suggestion.reviewNote': '¿Qué es confuso o falta en esta nota?',
@@ -349,11 +387,13 @@ const spanish: TranslationCatalog = {
   'tool.ok': 'completado',
   'tool.failed': 'falló',
   'tool.denied': 'denegado',
-  'chat.truncated': 'Se detuvo después de {iterations} iteraciones de herramientas (se alcanzó el límite).',
+  'chat.truncated':
+    'Se detuvo después de {iterations} iteraciones de herramientas (se alcanzó el límite).',
   'chat.noModels': 'La puerta de enlace no devolvió modelos.',
   'chat.requestFailed': 'Error de solicitud: {error}',
   'notice.apiKeyRequired': 'EveryAPI: añada primero su clave de API en la configuración.',
-  'notice.openEditorToInsert': 'EveryAPI: abra una nota en modo de edición para insertar en el cursor.',
+  'notice.openEditorToInsert':
+    'EveryAPI: abra una nota en modo de edición para insertar en el cursor.',
   'notice.inserted': 'EveryAPI: se insertó en la nota.',
   'notice.openMarkdownNote': 'EveryAPI: abra primero una nota de Markdown.',
   'notice.appendedToNote': 'EveryAPI: se añadió a {file}.',
@@ -364,8 +404,10 @@ const spanish: TranslationCatalog = {
   'approval.overwrite': 'Sobrescribir nota',
   'approval.applyTitle': '¿Aplicar esta edición a {path}?',
   'approval.apply': 'Aplicar edición',
-  'approval.reviewHint': 'EveryAPI propone el cambio siguiente. Revíselo antes de aprobarlo; no se escribirá nada hasta que lo apruebe.',
-  'approval.truncatedWarning': 'La vista previa está truncada: no es el contenido completo. Si aprueba, se escribirá la versión completa y sin truncar.',
+  'approval.reviewHint':
+    'EveryAPI propone el cambio siguiente. Revíselo antes de aprobarlo; no se escribirá nada hasta que lo apruebe.',
+  'approval.truncatedWarning':
+    'La vista previa está truncada: no es el contenido completo. Si aprueba, se escribirá la versión completa y sin truncar.',
   'approval.cancel': 'Cancelar',
 }
 
@@ -376,33 +418,43 @@ const french: TranslationCatalog = {
   'command.improveWriting': 'Améliorer la rédaction',
   'command.summarizeNote': 'Résumer la note',
   'command.continueWriting': 'Continuer à écrire',
-  'preset.explainSelection': 'Expliquez la sélection suivante de manière claire et concise :\n\n{text}',
+  'preset.explainSelection':
+    'Expliquez la sélection suivante de manière claire et concise :\n\n{text}',
   'preset.explainNote': 'Expliquez la note suivante de manière claire et concise :\n\n{text}',
-  'preset.improveSelection': 'Améliorez la rédaction de la sélection suivante en préservant le sens et le Markdown. Renvoyez uniquement le texte réécrit :\n\n{text}',
-  'preset.improveNote': 'Améliorez la rédaction de la note suivante en préservant le sens et le Markdown. Renvoyez uniquement le texte réécrit :\n\n{text}',
+  'preset.improveSelection':
+    'Améliorez la rédaction de la sélection suivante en préservant le sens et le Markdown. Renvoyez uniquement le texte réécrit :\n\n{text}',
+  'preset.improveNote':
+    'Améliorez la rédaction de la note suivante en préservant le sens et le Markdown. Renvoyez uniquement le texte réécrit :\n\n{text}',
   'preset.summarizeNote': 'Résumez la note suivante en puces concises :\n\n{text}',
-  'preset.continueWriting': 'Continuez naturellement à écrire là où cette note s’arrête. Renvoyez uniquement la suite :\n\n{text}',
+  'preset.continueWriting':
+    'Continuez naturellement à écrire là où cette note s’arrête. Renvoyez uniquement la suite :\n\n{text}',
   'status.openChatAria': 'EveryAPI : ouvrir le panneau de chat',
   'status.notConnected': 'EveryAPI : non connecté',
   'status.balance': 'EveryAPI : {balance}',
   'settings.apiKey': 'Clé API',
-  'settings.apiKeyDescription': 'Créez-en une dans la console EveryAPI, sous Jetons d’accès. Elle est stockée en JSON brut dans les données du plugin de ce coffre ; soyez prudent si vous synchronisez le coffre dans un emplacement non fiable avec une clé active.',
+  'settings.apiKeyDescription':
+    'Créez-en une dans la console EveryAPI, sous Jetons d’accès. Elle est stockée en JSON brut dans les données du plugin de ce coffre ; soyez prudent si vous synchronisez le coffre dans un emplacement non fiable avec une clé active.',
   'settings.gatewayBaseUrl': 'URL de base de la passerelle',
-  'settings.gatewayBaseUrlDescription': 'Conservez la valeur par défaut, sauf si vous testez un endpoint de préproduction.',
+  'settings.gatewayBaseUrlDescription':
+    'Conservez la valeur par défaut, sauf si vous testez un endpoint de préproduction.',
   'settings.defaultModel': 'Modèle par défaut',
-  'settings.defaultModelDescription': 'ID du modèle utilisé pour les nouveaux chats ; changez-le par chat depuis la puce de modèle du panneau. Laissez vide pour utiliser le premier modèle listé par la passerelle.',
+  'settings.defaultModelDescription':
+    'ID du modèle utilisé pour les nouveaux chats ; changez-le par chat depuis la puce de modèle du panneau. Laissez vide pour utiliser le premier modèle listé par la passerelle.',
   'settings.firstGatewayModel': '(le premier listé par la passerelle)',
   'settings.savedModel': '{model} (enregistré)',
   'picker.switchModel': 'Changer de modèle…',
   'action.newChat': 'Nouveau chat',
   'onboarding.connectTitle': 'Connecter EveryAPI',
-  'onboarding.productDescription': 'Une seule clé pour tous les modèles : Claude, GPT, Gemini, DeepSeek et plus de 240 autres via une passerelle unique.',
+  'onboarding.productDescription':
+    'Une seule clé pour tous les modèles : Claude, GPT, Gemini, DeepSeek et plus de 240 autres via une passerelle unique.',
   'onboarding.connect': 'Connecter',
   'onboarding.keyRequired': 'Collez d’abord votre clé EveryAPI.',
   'onboarding.validating': 'Validation…',
   'onboarding.connectionFailed': 'Connexion impossible : {error}',
-  'onboarding.keyHint': 'Créez une clé dans la console EveryAPI, sous Jetons d’accès. Elle reste dans les données du plugin de ce coffre.',
-  'chat.empty': 'Posez une question avec votre note actuelle comme contexte. Les réponses peuvent être insérées directement dans la note.',
+  'onboarding.keyHint':
+    'Créez une clé dans la console EveryAPI, sous Jetons d’accès. Elle reste dans les données du plugin de ce coffre.',
+  'chat.empty':
+    'Posez une question avec votre note actuelle comme contexte. Les réponses peuvent être insérées directement dans la note.',
   'suggestion.summarize': 'Résume cette note sous forme de puces',
   'suggestion.continueWriting': 'Continue à écrire là où cette note s’arrête',
   'suggestion.reviewNote': 'Qu’est-ce qui est flou ou manque dans cette note ?',
@@ -424,7 +476,8 @@ const french: TranslationCatalog = {
   'chat.noModels': 'La passerelle n’a renvoyé aucun modèle.',
   'chat.requestFailed': 'Échec de la requête : {error}',
   'notice.apiKeyRequired': 'EveryAPI : ajoutez d’abord votre clé API dans les paramètres.',
-  'notice.openEditorToInsert': 'EveryAPI : ouvrez une note en mode édition pour insérer au curseur.',
+  'notice.openEditorToInsert':
+    'EveryAPI : ouvrez une note en mode édition pour insérer au curseur.',
   'notice.inserted': 'EveryAPI : inséré dans la note.',
   'notice.openMarkdownNote': 'EveryAPI : ouvrez d’abord une note Markdown.',
   'notice.appendedToNote': 'EveryAPI : ajouté à {file}.',
@@ -435,8 +488,10 @@ const french: TranslationCatalog = {
   'approval.overwrite': 'Écraser la note',
   'approval.applyTitle': 'Appliquer cette modification à {path} ?',
   'approval.apply': 'Appliquer la modification',
-  'approval.reviewHint': 'EveryAPI propose la modification ci-dessous. Examinez-la avant de l’approuver ; rien ne sera écrit avant votre approbation.',
-  'approval.truncatedWarning': 'L’aperçu est tronqué : ce n’est pas le contenu complet. Si vous approuvez, la version complète et non tronquée sera écrite.',
+  'approval.reviewHint':
+    'EveryAPI propose la modification ci-dessous. Examinez-la avant de l’approuver ; rien ne sera écrit avant votre approbation.',
+  'approval.truncatedWarning':
+    'L’aperçu est tronqué : ce n’est pas le contenu complet. Si vous approuvez, la version complète et non tronquée sera écrite.',
   'approval.cancel': 'Annuler',
 }
 

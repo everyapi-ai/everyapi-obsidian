@@ -412,7 +412,10 @@ export async function refreshDeviceToken(opts: {
       // Thread the live refresh_token so a proxy that reflects the request body
       // into error_description cannot leak it (it isn't sk-everyapi-shaped, so
       // the format regex alone would miss it), matching every other error path.
-      redactSecrets(r.data.error_description || r.data.error || 'refresh failed', opts.refreshToken),
+      redactSecrets(
+        r.data.error_description || r.data.error || 'refresh failed',
+        opts.refreshToken
+      ),
       r.status
     )
   }

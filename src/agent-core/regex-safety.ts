@@ -128,11 +128,7 @@ export function hasNestedQuantifier(source: string): boolean {
           if (q.max > q.min && (sawInner === INNER_UNBOUNDED || q.max > SMALL_BOUNDED_REPEAT_MAX)) {
             return true
           }
-          if (
-            q.max === q.min &&
-            sawInner === INNER_UNBOUNDED &&
-            q.min > SMALL_BOUNDED_REPEAT_MAX
-          ) {
+          if (q.max === q.min && sawInner === INNER_UNBOUNDED && q.min > SMALL_BOUNDED_REPEAT_MAX) {
             return true
           }
         }

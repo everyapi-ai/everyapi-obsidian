@@ -4,7 +4,13 @@
 // opt-in codebase index (bulk-embed on an explicit user command) and by its
 // search_codebase tool (one short query embed at search time).
 
-import { authHeaders, redactSecrets, resolveSignal, safeReadText, type RequestOptions } from './http'
+import {
+  authHeaders,
+  redactSecrets,
+  resolveSignal,
+  safeReadText,
+  type RequestOptions,
+} from './http'
 
 export interface EmbedUsage {
   prompt_tokens?: number

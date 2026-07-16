@@ -318,7 +318,10 @@ export async function streamChat(input: StreamChatInput): Promise<void> {
             choices?: Array<{
               message?: {
                 content?: string
-                tool_calls?: Array<{ id?: string; function?: { name?: string; arguments?: string } }>
+                tool_calls?: Array<{
+                  id?: string
+                  function?: { name?: string; arguments?: string }
+                }>
               }
             }>
             usage?: ChatUsage | null

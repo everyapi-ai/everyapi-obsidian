@@ -373,14 +373,18 @@ export class ChatView extends ItemView {
   }
 
   private updateModelChip(): void {
-    this.modelChipEl?.setText(this.model || this.plugin.settings.defaultModel || t('chat.modelPlaceholder'))
+    this.modelChipEl?.setText(
+      this.model || this.plugin.settings.defaultModel || t('chat.modelPlaceholder')
+    )
   }
 
   private async openModelPicker(): Promise<void> {
     try {
       await this.ensureModels()
     } catch (e) {
-      new Notice(t('notice.modelsLoadFailed', { error: e instanceof Error ? e.message : String(e) }))
+      new Notice(
+        t('notice.modelsLoadFailed', { error: e instanceof Error ? e.message : String(e) })
+      )
       return
     }
     new ModelSuggestModal(this, this.models, (id) => {
@@ -522,7 +526,11 @@ export class ChatView extends ItemView {
             } else {
               // Append the outcome once the call finishes, on the same line.
               const status =
-                e.status === 'ok' ? t('tool.ok') : e.status === 'error' ? t('tool.failed') : t('tool.denied')
+                e.status === 'ok'
+                  ? t('tool.ok')
+                  : e.status === 'error'
+                    ? t('tool.failed')
+                    : t('tool.denied')
               committed += ` — ${status}\n`
               render()
             }
@@ -547,7 +555,9 @@ export class ChatView extends ItemView {
         flushLive()
         aiMsg.text = committed.trimEnd()
         if (!isAbort(e)) {
-          aiMsg.error = t('chat.requestFailed', { error: e instanceof Error ? e.message : String(e) })
+          aiMsg.error = t('chat.requestFailed', {
+            error: e instanceof Error ? e.message : String(e),
+          })
         } else if (aiMsg.text === '') {
           // Aborted before anything streamed — drop the empty assistant bubble
           // instead of rendering a model header with no body.

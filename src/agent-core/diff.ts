@@ -338,7 +338,13 @@ export function bestFuzzyWindow(
       // to several windows edits the copy the caller pointed at rather than the
       // first in iteration order — mirroring the exact-match path above.
       if (!best || score > best.score || (score === best.score && dist < bestDist)) {
-        best = { index: offsetOfLine(text, i + 1), length: chunk.length, line: i, score, text: chunk }
+        best = {
+          index: offsetOfLine(text, i + 1),
+          length: chunk.length,
+          line: i,
+          score,
+          text: chunk,
+        }
         bestDist = dist
       }
     }
