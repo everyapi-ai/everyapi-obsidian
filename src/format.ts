@@ -18,9 +18,7 @@ export interface HistoryItem {
   content: string
 }
 
-/**
- * Keep the most recent messages whose cumulative content length stays within [maxChars], walking newest→oldest then restoring chronological order. This sits on top of the count cap so a few very long turns can't blow a small model's context window. Always keeps at least the newest item, even if it alone exceeds the budget (dropping it would send an empty conversation).
- */
+/** Keep the most recent messages whose cumulative content length stays within [maxChars], walking newest→oldest then restoring chronological order. This sits on top of the count cap so a few very long turns can't blow a small model's context window. Always keeps at least the newest item, even if it alone exceeds the budget (dropping it would send an empty conversation). */
 export function trimHistoryByChars(items: HistoryItem[], maxChars: number): HistoryItem[] {
   const kept: HistoryItem[] = []
   let total = 0

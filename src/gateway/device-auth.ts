@@ -24,8 +24,7 @@ export interface DeviceLoginResult {
   /** The resolved `sk-everyapi-…` relay key, ready to use against `/v1`. */
   apiKey: string
   username?: string
-  /** OAuth2 only: the refresh token + access-key expiry (epoch ms) for
-   *  transparent renewal. Absent on the legacy flow (its keys don't expire). */
+  /** OAuth2 only: the refresh token + access-key expiry (epoch ms) for transparent renewal. Absent on the legacy flow (its keys don't expire). */
   refreshToken?: string
   expiresAt?: number
 }
@@ -66,9 +65,7 @@ function headers(o: Opts, auth?: { token: string; userId: number }): Record<stri
   return h
 }
 
-/**
- * A definitive response from the server (non-2xx, or a `success:false` envelope) — as opposed to a transport-level failure. The poll loop surfaces these immediately instead of retrying, mirroring the Go SDK's APIError handling.
- */
+/** A definitive response from the server (non-2xx, or a `success:false` envelope) — as opposed to a transport-level failure. The poll loop surfaces these immediately instead of retrying, mirroring the Go SDK's APIError handling. */
 export class ApiResponseError extends Error {
   constructor(
     message: string,
@@ -158,9 +155,7 @@ interface TokenSummary {
   group: string
 }
 
-/**
- * Exchange a management access_token for the account's newest enabled relay key. Mirrors api.ResolveRelayKey: list tokens (GET /api/token/), pick the first enabled one, fetch its plaintext key (POST /api/token/{id}/key).
- */
+/** Exchange a management access_token for the account's newest enabled relay key. Mirrors api.ResolveRelayKey: list tokens (GET /api/token/), pick the first enabled one, fetch its plaintext key (POST /api/token/{id}/key). */
 export async function resolveRelayKey(
   o: Opts,
   accessToken: string,
@@ -213,8 +208,7 @@ const OAUTH_DEVICE_GRANT = 'urn:ietf:params:oauth:grant-type:device_code'
 
 const oauthBase = (baseUrl: string): string => `${adminApiBase(baseUrl)}/oauth2`
 
-/** Thrown when the gateway has no /api/oauth2 routes (older deployment), so the
- *  caller falls back to the legacy /api/cli/device-auth-* flow. */
+/** Thrown when the gateway has no /api/oauth2 routes (older deployment), so the caller falls back to the legacy /api/cli/device-auth-* flow. */
 class OAuthEndpointMissing extends Error {}
 
 interface OAuthFormResult<T> {
@@ -251,9 +245,7 @@ interface OAuthDeviceStart extends DeviceAuthStartResp {
   verification_uri_complete?: string
 }
 
-/**
- * OAuth 2.0 Device Authorization Grant (RFC 8628) against /api/oauth2/*. The issued access_token IS the relay key (sk-everyapi-…), so there's no separate relay-key resolution. Throws OAuthEndpointMissing when the routes are absent.
- */
+/** OAuth 2.0 Device Authorization Grant (RFC 8628) against /api/oauth2/*. The issued access_token IS the relay key (sk-everyapi-…), so there's no separate relay-key resolution. Throws OAuthEndpointMissing when the routes are absent. */
 async function loginWithOAuth2Device(opts: {
   baseUrl: string
   userAgent?: string
@@ -360,9 +352,7 @@ async function loginWithOAuth2Device(opts: {
   }
 }
 
-/**
- * Refresh an OAuth2 device-issued key (grant_type=refresh_token). Returns the new key + rotated refresh token + new expiry. Throws on failure — the caller keeps the old key and/or prompts a fresh sign-in. Only the OAuth2 flow issues refresh tokens; legacy keys never call this.
- */
+/** Refresh an OAuth2 device-issued key (grant_type=refresh_token). Returns the new key + rotated refresh token + new expiry. Throws on failure — the caller keeps the old key and/or prompts a fresh sign-in. Only the OAuth2 flow issues refresh tokens; legacy keys never call this. */
 export async function refreshDeviceToken(opts: {
   baseUrl: string
   userAgent?: string
@@ -395,9 +385,7 @@ export async function refreshDeviceToken(opts: {
   }
 }
 
-/**
- * Full legacy device-auth login → relay key. Ported from cmd/login.go + device_auth.go's PollUntilDone: adaptive interval, slow_down backoff, a small transient-error budget, and the same terminal states.
- */
+/** Full legacy device-auth login → relay key. Ported from cmd/login.go + device_auth.go's PollUntilDone: adaptive interval, slow_down backoff, a small transient-error budget, and the same terminal states. */
 async function loginWithLegacyDeviceAuth(opts: {
   baseUrl: string
   userAgent?: string
@@ -454,9 +442,7 @@ async function loginWithLegacyDeviceAuth(opts: {
   }
 }
 
-/**
- * Device-auth login that supports BOTH backends: the OAuth 2.0 device grant (/api/oauth2/*, tried first when `clientId` is given) and the legacy /api/cli/device-auth-* flow (used when the gateway has no oauth2 routes). A client therefore works against old and new deployments alike.
- */
+/** Device-auth login that supports BOTH backends: the OAuth 2.0 device grant (/api/oauth2/*, tried first when `clientId` is given) and the legacy /api/cli/device-auth-* flow (used when the gateway has no oauth2 routes). A client therefore works against old and new deployments alike. */
 export async function loginWithDeviceAuth(opts: {
   baseUrl: string
   userAgent?: string

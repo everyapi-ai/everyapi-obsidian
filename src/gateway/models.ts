@@ -7,8 +7,7 @@ export interface GatewayModel {
   context_window?: number
   /** Per-model output-token cap, where the gateway exposes one. */
   max_output?: number
-  /** Accepted input types, e.g. `['text', 'image', 'pdf']`. Absent when the
-   *  gateway hasn't classified the model. */
+  /** Accepted input types, e.g. `['text', 'image', 'pdf']`. Absent when the gateway hasn't classified the model. */
   input_modalities?: string[]
   /** Produced output types, e.g. `['text']`. */
   output_modalities?: string[]

@@ -6,9 +6,7 @@ export interface RequestOptions {
   apiKey: string
   /** Sent as `X-Client-App`; allowed in browser fetch and Node alike. */
   clientApp?: string
-  /**
-   * Sent as `User-Agent`. This is a forbidden header in browser/Electron fetch (silently dropped), so only desktop/Node callers (VS Code) set it; browser callers (Obsidian) identify themselves via {@link clientApp}.
-   */
+  /** Sent as `User-Agent`. This is a forbidden header in browser/Electron fetch (silently dropped), so only desktop/Node callers (VS Code) set it; browser callers (Obsidian) identify themselves via {@link clientApp}. */
   userAgent?: string
   /** Caller-owned abort signal; takes precedence over {@link timeoutMs}. */
   signal?: AbortSignal
@@ -50,9 +48,7 @@ export async function getJson<T>(url: string, opts: RequestOptions): Promise<T> 
   return (await res.json()) as T
 }
 
-/**
- * Strip credentials out of arbitrary text before it crosses a trust boundary (a thrown error message, which the MCP server forwards verbatim as a tool result). Upstream error bodies are attacker- or misconfiguration-controlled — e.g. a proxy that echoes request headers on a 401 — so any credential reflected in one must not survive into a log line or an LLM-visible tool result. Redacts both this package's `sk-everyapi-…` token shape AND the caller's literal key when supplied: self-hosted gateways (EVERYAPI_BASE_URL) commonly issue `sk-<random>` / `ev-…` keys with no `everyapi-` infix, which the format regex alone would miss.
- */
+/** Strip credentials out of arbitrary text before it crosses a trust boundary (a thrown error message, which the MCP server forwards verbatim as a tool result). Upstream error bodies are attacker- or misconfiguration-controlled — e.g. a proxy that echoes request headers on a 401 — so any credential reflected in one must not survive into a log line or an LLM-visible tool result. Redacts both this package's `sk-everyapi-…` token shape AND the caller's literal key when supplied: self-hosted gateways (EVERYAPI_BASE_URL) commonly issue `sk-<random>` / `ev-…` keys with no `everyapi-` infix, which the format regex alone would miss. */
 export function redactSecrets(text: string, apiKey?: string): string {
   let out = text.replace(/sk-everyapi-[A-Za-z0-9_-]+/g, '[REDACTED]')
   // Guard on a minimum length so a pathologically short/empty key can't blank out unrelated substrings of the message.

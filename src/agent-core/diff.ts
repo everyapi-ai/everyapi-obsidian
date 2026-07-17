@@ -28,23 +28,17 @@ export function parseDiffBlocks(diff: string): DiffBlock[] {
   return blocks
 }
 
-/** Count of `<<<<<<< SEARCH` block openers in a diff. `parseDiffBlocks` only
- *  returns blocks that also carry a valid `:start_line:N` line and the full `-------`/`=======`/`>>>>>>> REPLACE` frame, so any opener missing one of those is silently skipped. Comparing this count against the parsed count is how a caller detects malformed blocks that would otherwise be dropped while
- *  the apply still reports success. */
+/** Count of `<<<<<<< SEARCH` block openers in a diff. `parseDiffBlocks` only returns blocks that also carry a valid `:start_line:N` line and the full `-------`/`=======`/`>>>>>>> REPLACE` frame, so any opener missing one of those is silently skipped. Comparing this count against the parsed count is how a caller detects malformed blocks that would otherwise be dropped while the apply still reports success. */
 export function countSearchMarkers(diff: string): number {
   return (diff.match(/^<<<<<<< SEARCH[ \t]*$/gm) ?? []).length
 }
 
-/** Count of `<<<<<<< SEARCH` openers that `parseDiffBlocks` did NOT consume —
- *  i.e. malformed blocks that would be silently dropped by an apply. Unlike comparing `countSearchMarkers` against the parsed-block count, this does not misfire when a VALID block's search/replace content itself contains a raw `<<<<<<< SEARCH` line (editing a file that embeds diff markers — test fixtures, docs about this very format): those lines sit inside a consumed span and are payload, not dropped blocks. Expects `\n` line endings
- *  (normalize `\r\n` first, as `parseDiffBlocks` requires anyway). */
+/** Count of `<<<<<<< SEARCH` openers that `parseDiffBlocks` did NOT consume — i.e. malformed blocks that would be silently dropped by an apply. Unlike comparing `countSearchMarkers` against the parsed-block count, this does not misfire when a VALID block's search/replace content itself contains a raw `<<<<<<< SEARCH` line (editing a file that embeds diff markers — test fixtures, docs about this very format): those lines sit inside a consumed span and are payload, not dropped blocks. Expects `\n` line endings (normalize `\r\n` first, as `parseDiffBlocks` requires anyway). */
 function countDroppedSearchMarkers(diff: string): number {
   return countSearchMarkers(diff.replace(SEARCH_RE, ''))
 }
 
-/** Openers that begin a plausible block: `<<<<<<< SEARCH` followed by a
- *  `:start_line:` line. Built from OPENER_HEAD_SRC — the exact head SEARCH_RE parses — so `parseDiffBlocks` can never parse MORE blocks than this; parsing FEWER means a block with a missing frame marker made the lazy SEARCH_RE span absorb a neighbouring block — the "merged garbage block" failure the outside-span count alone cannot see, because both openers land inside the one consumed span. Deliberately un-anchored like SEARCH_RE, so payload reproducing the full head sequence still errs toward a loud false
- *  reject over silent corruption. */
+/** Openers that begin a plausible block: `<<<<<<< SEARCH` followed by a `:start_line:` line. Built from OPENER_HEAD_SRC — the exact head SEARCH_RE parses — so `parseDiffBlocks` can never parse MORE blocks than this; parsing FEWER means a block with a missing frame marker made the lazy SEARCH_RE span absorb a neighbouring block — the "merged garbage block" failure the outside-span count alone cannot see, because both openers land inside the one consumed span. Deliberately un-anchored like SEARCH_RE, so payload reproducing the full head sequence still errs toward a loud false reject over silent corruption. */
 const PLAUSIBLE_OPENER_RE = new RegExp(OPENER_HEAD_SRC, 'g')
 
 function countPlausibleSearchOpeners(diff: string): number {
@@ -85,9 +79,7 @@ export interface BlockMatch {
   index: number
   length: number
   closest?: { from: number; to: number; score: number; text: string }
-  /** Set when a match was accepted (or rejected) despite landing far from the
-   *  `:start_line:` hint, or when the SEARCH text is ambiguous (occurs more than once in the file). Surfaces that uncertainty to callers/approval UIs instead of silently editing whichever copy a plain string search happened to find first. Absent on the common, unambiguous near-anchor
-   *  match, so it never shows up on the normal apply_diff path. */
+  /** Set when a match was accepted (or rejected) despite landing far from the `:start_line:` hint, or when the SEARCH text is ambiguous (occurs more than once in the file). Surfaces that uncertainty to callers/approval UIs instead of silently editing whichever copy a plain string search happened to find first. Absent on the common, unambiguous near-anchor match, so it never shows up on the normal apply_diff path. */
   warning?: string
 }
 
@@ -230,9 +222,7 @@ interface FuzzyWindow {
   line: number
   score: number
   text: string
-  /** How many windows in the scanned range were trim-equal to the SEARCH text
-   *  (i.e. exact ignoring trailing whitespace). >1 means the SEARCH is
-   *  duplicated, so the caller should surface which copy proximity picked. */
+  /** How many windows in the scanned range were trim-equal to the SEARCH text (i.e. exact ignoring trailing whitespace). >1 means the SEARCH is duplicated, so the caller should surface which copy proximity picked. */
   duplicates?: number
 }
 
@@ -322,9 +312,7 @@ export type ApplyDiffResult =
   | { ok: false; error: string; suggestion?: string }
 
 export interface ApplyDiffOptions {
-  /** Replace EVERY exact occurrence of each block's SEARCH text (the line
-   *  anchor is irrelevant then) instead of the single anchored match — the `replace_all` mode of the apply_diff tool. An empty-SEARCH insertion block still takes the anchored path. Lives here rather than in a host's
-   *  own copy of the loop so every client applies the mode identically. */
+  /** Replace EVERY exact occurrence of each block's SEARCH text (the line anchor is irrelevant then) instead of the single anchored match — the `replace_all` mode of the apply_diff tool. An empty-SEARCH insertion block still takes the anchored path. Lives here rather than in a host's own copy of the loop so every client applies the mode identically. */
   replaceAll?: boolean
 }
 
@@ -416,9 +404,7 @@ export function applyDiff(
   }
 }
 
-/**
- * An approval preview: `text` is what gets rendered to the user, `truncated` says whether `text` omits part of the real content/diff — the caller MUST surface `truncated` distinctly (not just as trailing text the user can scroll past), because on approval the FULL, untruncated content/diff is what actually gets written, not the preview.
- */
+/** An approval preview: `text` is what gets rendered to the user, `truncated` says whether `text` omits part of the real content/diff — the caller MUST surface `truncated` distinctly (not just as trailing text the user can scroll past), because on approval the FULL, untruncated content/diff is what actually gets written, not the preview. */
 export interface PreviewResult {
   text: string
   truncated: boolean

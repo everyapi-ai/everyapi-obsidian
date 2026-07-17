@@ -62,9 +62,7 @@ export async function fetchLogs(opts: RequestOptions): Promise<LogRow[]> {
   return Array.isArray(body.data) ? body.data : []
 }
 
-/**
- * GET `{admin}/status` — the deployment's quota→USD peg (`quota_per_unit`). Self-hosted operators can retune it; the public/default deployment returns {@link QUOTA_PER_USD}. Falls back to that default when the field is absent/non-positive or the request fails, so a caller can always format with the result. Pass it to {@link fmtUsd} (and any `quota / peg` math) instead of the hardcoded constant. The endpoint is public, but we still send auth since every other admin read does.
- */
+/** GET `{admin}/status` — the deployment's quota→USD peg (`quota_per_unit`). Self-hosted operators can retune it; the public/default deployment returns {@link QUOTA_PER_USD}. Falls back to that default when the field is absent/non-positive or the request fails, so a caller can always format with the result. Pass it to {@link fmtUsd} (and any `quota / peg` math) instead of the hardcoded constant. The endpoint is public, but we still send auth since every other admin read does. */
 export async function fetchQuotaPerUsd(opts: RequestOptions): Promise<number> {
   try {
     const url = `${adminApiBase(opts.baseUrl)}/status`
@@ -87,9 +85,7 @@ export interface StatusInfo {
   systemName: string
 }
 
-/**
- * GET `{admin}/status` — deployment identity + the quota→USD peg in one read. A richer sibling of {@link fetchQuotaPerUsd} for callers that also want to show which deployment/version a key is hitting (e.g. a status tooltip). The endpoint is public; we send auth like every other admin read. Never throws — every field falls back so a caller can always render.
- */
+/** GET `{admin}/status` — deployment identity + the quota→USD peg in one read. A richer sibling of {@link fetchQuotaPerUsd} for callers that also want to show which deployment/version a key is hitting (e.g. a status tooltip). The endpoint is public; we send auth like every other admin read. Never throws — every field falls back so a caller can always render. */
 export async function fetchStatus(opts: RequestOptions): Promise<StatusInfo> {
   try {
     const url = `${adminApiBase(opts.baseUrl)}/status`
@@ -116,9 +112,7 @@ export async function fetchStatus(opts: RequestOptions): Promise<StatusInfo> {
   }
 }
 
-/** Remaining balance in USD, or null for unlimited-quota keys. Pass `perUsd`
- *  (from {@link fetchQuotaPerUsd}) for a retuned self-hosted peg; omitted, it
- *  uses the published default. */
+/** Remaining balance in USD, or null for unlimited-quota keys. Pass `perUsd` (from {@link fetchQuotaPerUsd}) for a retuned self-hosted peg; omitted, it uses the published default. */
 export async function fetchBalanceUsd(
   opts: RequestOptions,
   perUsd: number = QUOTA_PER_USD

@@ -77,9 +77,7 @@ interface StreamTurn {
   usage: ChatUsage | undefined
 }
 
-/**
- * Run the agentic loop to completion. Returns the final assistant text. Tool execution is gated inside the executors (approval for mutating tools); a denied/failed tool produces a structured result the model can react to, so the loop never throws on a tool failure — only on a transport/HTTP error.
- */
+/** Run the agentic loop to completion. Returns the final assistant text. Tool execution is gated inside the executors (approval for mutating tools); a denied/failed tool produces a structured result the model can react to, so the loop never throws on a tool failure — only on a transport/HTTP error. */
 export async function runAgentLoop(input: AgentLoopInput): Promise<AgentLoopResult> {
   const messages = [...input.messages]
   let lastText = ''

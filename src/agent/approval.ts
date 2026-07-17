@@ -6,21 +6,16 @@ import { App, Modal } from 'obsidian'
 
 import { t } from '../i18n'
 
-/**
- * How a mutating tool asks the user for permission. The view supplies a real implementation backed by Obsidian modals; tests can inject a stub. Returns true to proceed, false to deny.
- */
+/** How a mutating tool asks the user for permission. The view supplies a real implementation backed by Obsidian modals; tests can inject a stub. Returns true to proceed, false to deny. */
 export interface ApprovalGate {
-  /** Confirm writing `content` to `relPath` (preview is a diff/new-note
-   *  preview). `truncated` is true when `preview` omits part of the content that will actually be written — the implementation must surface this
-   *  distinctly, not bury it as trailing text in the preview. */
+  /** Confirm writing `content` to `relPath` (preview is a diff/new-note preview). `truncated` is true when `preview` omits part of the content that will actually be written — the implementation must surface this distinctly, not bury it as trailing text in the preview. */
   confirmWrite(
     relPath: string,
     preview: string,
     isNew: boolean,
     truncated: boolean
   ): Promise<boolean>
-  /** Confirm applying the rendered diff to `relPath`. `truncated` is true when
-   *  `preview` omits part of the diff that will actually be applied. */
+  /** Confirm applying the rendered diff to `relPath`. `truncated` is true when `preview` omits part of the diff that will actually be applied. */
   confirmDiff(relPath: string, preview: string, truncated: boolean): Promise<boolean>
 }
 
@@ -65,9 +60,7 @@ export class ObsidianApprovalGate implements ApprovalGate {
   }
 }
 
-/**
- * A confirm/cancel modal that previews a proposed vault change. `resolve` is called exactly once: with true only when the confirm button is clicked, with false on Cancel or any dismissal (onClose), so the gate fails closed.
- */
+/** A confirm/cancel modal that previews a proposed vault change. `resolve` is called exactly once: with true only when the confirm button is clicked, with false on Cancel or any dismissal (onClose), so the gate fails closed. */
 class ApprovalModal extends Modal {
   private decided = false
 

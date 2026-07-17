@@ -53,9 +53,7 @@ export class VaultExecutors {
     this.vault = app.vault
   }
 
-  /**
-   * Dispatch a parsed tool call to its executor. Always resolves to a ToolResult — never throws — so a guard rejection becomes model-visible feedback rather than a crashed loop.
-   */
+  /** Dispatch a parsed tool call to its executor. Always resolves to a ToolResult — never throws — so a guard rejection becomes model-visible feedback rather than a crashed loop. */
   async execute(name: ToolName, args: Record<string, unknown>): Promise<ToolResult> {
     try {
       switch (name) {
@@ -321,8 +319,7 @@ export class VaultExecutors {
 
   // ---- helpers --------------------------------------------------------------
 
-  /** Create the chain of parent folders for `rel` if they don't exist yet, so
-   *  vault.create on a nested path doesn't fail (Obsidian won't auto-mkdir). */
+  /** Create the chain of parent folders for `rel` if they don't exist yet, so vault.create on a nested path doesn't fail (Obsidian won't auto-mkdir). */
   private async ensureParentFolder(rel: string): Promise<void> {
     const slash = rel.lastIndexOf('/')
     if (slash <= 0) return
@@ -365,8 +362,7 @@ function outside(path: string): ToolResult {
   )
 }
 
-/** Translate a simple file glob ('*.md', 'Folder/**\/*.md') to a RegExp that
- *  matches a vault-relative path. Supports `*`, `**`, and `?`. */
+/** Translate a simple file glob ('*.md', 'Folder/**\/*.md') to a RegExp that matches a vault-relative path. Supports `*`, `**`, and `?`. */
 function globToRegExp(glob: string): RegExp {
   let re = ''
   for (let i = 0; i < glob.length; i++) {

@@ -20,9 +20,7 @@ export interface EmbedInput extends RequestOptions {
 }
 
 export interface EmbedResult {
-  /**
-   * One vector per input string, aligned by each response entry's `index` to the corresponding position in `input` (not by response order). A sparse or dropped upstream response throws rather than returning misaligned vectors.
-   */
+  /** One vector per input string, aligned by each response entry's `index` to the corresponding position in `input` (not by response order). A sparse or dropped upstream response throws rather than returning misaligned vectors. */
   embeddings: number[][]
   usage?: EmbedUsage
 }
@@ -33,9 +31,7 @@ interface EmbeddingsResponse {
   error?: { message?: string; type?: string; code?: string } | string
 }
 
-/**
- * Embed a batch of strings. Honors {@link RequestOptions.signal}/`timeoutMs` (a large batch can be slow, so callers should pass a generous timeout). The returned vectors are aligned to `input` by each entry's `index` — OpenAI may emit `data` out of order, so we slot each embedding into its index position. If the response is sparse (an index missing), alignment can't be guaranteed and the call throws instead of silently returning misaligned vectors.
- */
+/** Embed a batch of strings. Honors {@link RequestOptions.signal}/`timeoutMs` (a large batch can be slow, so callers should pass a generous timeout). The returned vectors are aligned to `input` by each entry's `index` — OpenAI may emit `data` out of order, so we slot each embedding into its index position. If the response is sparse (an index missing), alignment can't be guaranteed and the call throws instead of silently returning misaligned vectors. */
 export async function embed(input: EmbedInput): Promise<EmbedResult> {
   const body = {
     model: input.model,

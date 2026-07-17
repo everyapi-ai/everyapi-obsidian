@@ -14,8 +14,7 @@ export interface TextPart {
   text: string
 }
 
-/** An image segment of a multimodal message: a data: or http(s) URL the gateway
- *  forwards to a vision-capable upstream in OpenAI `image_url` shape. */
+/** An image segment of a multimodal message: a data: or http(s) URL the gateway forwards to a vision-capable upstream in OpenAI `image_url` shape. */
 export interface ImagePart {
   type: 'image_url'
   image_url: { url: string }
@@ -26,13 +25,9 @@ export type ContentPart = TextPart | ImagePart
 
 export interface ChatMessage {
   role: 'user' | 'assistant' | 'system' | 'tool'
-  /**
-   * Plain text, or — for a user turn carrying attached images — an OpenAI multimodal `content` array of text/image parts. The request body forwards it verbatim, so an array reaches a vision model unchanged; a plain string is the unchanged common case.
-   */
+  /** Plain text, or — for a user turn carrying attached images — an OpenAI multimodal `content` array of text/image parts. The request body forwards it verbatim, so an array reaches a vision model unchanged; a plain string is the unchanged common case. */
   content: string | ContentPart[]
-  /**
-   * OpenAI tool-call protocol. Present only on an `assistant` turn that invoked tools; carried verbatim so a multi-turn tool conversation round-trips. Plain chat never sets it, so existing callers are unaffected.
-   */
+  /** OpenAI tool-call protocol. Present only on an `assistant` turn that invoked tools; carried verbatim so a multi-turn tool conversation round-trips. Plain chat never sets it, so existing callers are unaffected. */
   tool_calls?: ChatToolCall[]
   /** Links a `tool`-role result message back to its originating call id. */
   tool_call_id?: string
@@ -66,23 +61,15 @@ export interface ToolCall {
 export interface StreamChatInput extends RequestOptions {
   model: string
   messages: ChatMessage[]
-  /**
-   * Provider-specific tunables (temperature, top_p, stop, …) spread straight into the request body. Keys EveryAPI doesn't understand are ignored upstream rather than rejected, so this is always safe. `model`, `messages`, `stream` and `stream_options` are reserved by this function and cannot be overridden here — the protocol-critical fields always win.
-   */
+  /** Provider-specific tunables (temperature, top_p, stop, …) spread straight into the request body. Keys EveryAPI doesn't understand are ignored upstream rather than rejected, so this is always safe. `model`, `messages`, `stream` and `stream_options` are reserved by this function and cannot be overridden here — the protocol-critical fields always win. */
   modelOptions?: Record<string, unknown>
-  /**
-   * OpenAI function-tool definitions forwarded to the upstream so it can emit tool calls. Omit (or pass empty) for a plain chat request — the `tools` key is then absent from the body, exactly as before.
-   */
+  /** OpenAI function-tool definitions forwarded to the upstream so it can emit tool calls. Omit (or pass empty) for a plain chat request — the `tools` key is then absent from the body, exactly as before. */
   tools?: ChatTool[]
   signal: AbortSignal
   onTextDelta: (chunk: string) => void
-  /**
-   * Fired once per completed tool call at end-of-stream — OpenAI streams the arguments JSON in fragments, so it's only parseable once the last fragment arrives. Omit if the caller doesn't consume tool calls; without it tool-call deltas are ignored entirely.
-   */
+  /** Fired once per completed tool call at end-of-stream — OpenAI streams the arguments JSON in fragments, so it's only parseable once the last fragment arrives. Omit if the caller doesn't consume tool calls; without it tool-call deltas are ignored entirely. */
   onToolCall?: (call: ToolCall) => void
-  /**
-   * Fired at most once with the trailing usage block. Providing this callback is what opts the request into `stream_options.include_usage`; callers must tolerate it never firing (not every upstream reports usage).
-   */
+  /** Fired at most once with the trailing usage block. Providing this callback is what opts the request into `stream_options.include_usage`; callers must tolerate it never firing (not every upstream reports usage). */
   onUsage?: (usage: ChatUsage) => void
 }
 
@@ -312,9 +299,7 @@ export interface ChatResult {
   usage?: ChatUsage
 }
 
-/**
- * One-shot (non-streaming) chat completion. Used by callers that don't render tokens incrementally — the MCP server returns the whole reply as one tool result. Honors {@link RequestOptions.timeoutMs}/`signal`; a chat call can be slow, so callers should pass a generous timeout rather than the short one used for account GETs.
- */
+/** One-shot (non-streaming) chat completion. Used by callers that don't render tokens incrementally — the MCP server returns the whole reply as one tool result. Honors {@link RequestOptions.timeoutMs}/`signal`; a chat call can be slow, so callers should pass a generous timeout rather than the short one used for account GETs. */
 export async function completeChat(input: CompleteChatInput): Promise<ChatResult> {
   const body = {
     ...input.modelOptions,

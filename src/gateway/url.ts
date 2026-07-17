@@ -16,9 +16,7 @@ export function adminApiBase(baseUrl: string): string {
   return baseUrl.replace(/\/v1$/, '') + '/api'
 }
 
-/**
- * Format an internal quota amount as a USD string. `perUsd` is the deployment's quota→USD peg; it defaults to {@link QUOTA_PER_USD} so existing single-arg callers are unchanged, but a caller that resolved the real rate (via {@link fetchQuotaPerUsd}) should pass it so self-hosted retunes read correctly. A non-positive `perUsd` falls back to the default rather than dividing by zero.
- */
+/** Format an internal quota amount as a USD string. `perUsd` is the deployment's quota→USD peg; it defaults to {@link QUOTA_PER_USD} so existing single-arg callers are unchanged, but a caller that resolved the real rate (via {@link fetchQuotaPerUsd}) should pass it so self-hosted retunes read correctly. A non-positive `perUsd` falls back to the default rather than dividing by zero. */
 export function fmtUsd(quota: number, perUsd: number = QUOTA_PER_USD): string {
   const rate = perUsd > 0 ? perUsd : QUOTA_PER_USD
   const usd = quota / rate

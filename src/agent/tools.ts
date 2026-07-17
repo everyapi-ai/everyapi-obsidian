@@ -26,9 +26,7 @@ export const TOOL_NAMES = OBSIDIAN_AGENT_TOOL_NAMES
 
 export type ToolName = (typeof TOOL_NAMES)[number]
 
-/**
- * Per-tool execution policy. `needsApproval` tools MUST get explicit, per-call user approval before running — the gateway does not gate execution.
- */
+/** Per-tool execution policy. `needsApproval` tools MUST get explicit, per-call user approval before running — the gateway does not gate execution. */
 export const TOOL_POLICY = Object.fromEntries(
   TOOL_NAMES.map((name) => {
     const policy = policyByToolName(name)
