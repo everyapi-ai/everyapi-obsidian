@@ -1,8 +1,4 @@
-// Streaming chat over the OpenAI-compatible `/v1/chat/completions`, with
-// hand-rolled SSE parsing (the openai SDK would add ~200 kB to each bundle
-// for the two endpoints we use). Supports the union of what the surfaces
-// need: text deltas everywhere, tool-call accumulation (VS Code Copilot
-// Chat) and a trailing usage block (the Obsidian panel) opt-in via callback.
+// Streaming chat over the OpenAI-compatible `/v1/chat/completions`, with hand-rolled SSE parsing (the openai SDK would add ~200 kB to each bundle for the two endpoints we use). Supports the union of what the surfaces need: text deltas everywhere, tool-call accumulation (VS Code Copilot Chat) and a trailing usage block (the Obsidian panel) opt-in via callback.
 
 import {
   authHeaders,
@@ -31,16 +27,11 @@ export type ContentPart = TextPart | ImagePart
 export interface ChatMessage {
   role: 'user' | 'assistant' | 'system' | 'tool'
   /**
-   * Plain text, or — for a user turn carrying attached images — an OpenAI
-   * multimodal `content` array of text/image parts. The request body forwards it
-   * verbatim, so an array reaches a vision model unchanged; a plain string is the
-   * unchanged common case.
+   * Plain text, or — for a user turn carrying attached images — an OpenAI multimodal `content` array of text/image parts. The request body forwards it verbatim, so an array reaches a vision model unchanged; a plain string is the unchanged common case.
    */
   content: string | ContentPart[]
   /**
-   * OpenAI tool-call protocol. Present only on an `assistant` turn that invoked
-   * tools; carried verbatim so a multi-turn tool conversation round-trips. Plain
-   * chat never sets it, so existing callers are unaffected.
+   * OpenAI tool-call protocol. Present only on an `assistant` turn that invoked tools; carried verbatim so a multi-turn tool conversation round-trips. Plain chat never sets it, so existing callers are unaffected.
    */
   tool_calls?: ChatToolCall[]
   /** Links a `tool`-role result message back to its originating call id. */
@@ -76,32 +67,21 @@ export interface StreamChatInput extends RequestOptions {
   model: string
   messages: ChatMessage[]
   /**
-   * Provider-specific tunables (temperature, top_p, stop, …) spread straight
-   * into the request body. Keys EveryAPI doesn't understand are ignored
-   * upstream rather than rejected, so this is always safe. `model`, `messages`,
-   * `stream` and `stream_options` are reserved by this function and cannot be
-   * overridden here — the protocol-critical fields always win.
+   * Provider-specific tunables (temperature, top_p, stop, …) spread straight into the request body. Keys EveryAPI doesn't understand are ignored upstream rather than rejected, so this is always safe. `model`, `messages`, `stream` and `stream_options` are reserved by this function and cannot be overridden here — the protocol-critical fields always win.
    */
   modelOptions?: Record<string, unknown>
   /**
-   * OpenAI function-tool definitions forwarded to the upstream so it can emit
-   * tool calls. Omit (or pass empty) for a plain chat request — the `tools` key
-   * is then absent from the body, exactly as before.
+   * OpenAI function-tool definitions forwarded to the upstream so it can emit tool calls. Omit (or pass empty) for a plain chat request — the `tools` key is then absent from the body, exactly as before.
    */
   tools?: ChatTool[]
   signal: AbortSignal
   onTextDelta: (chunk: string) => void
   /**
-   * Fired once per completed tool call at end-of-stream — OpenAI streams the
-   * arguments JSON in fragments, so it's only parseable once the last
-   * fragment arrives. Omit if the caller doesn't consume tool calls; without
-   * it tool-call deltas are ignored entirely.
+   * Fired once per completed tool call at end-of-stream — OpenAI streams the arguments JSON in fragments, so it's only parseable once the last fragment arrives. Omit if the caller doesn't consume tool calls; without it tool-call deltas are ignored entirely.
    */
   onToolCall?: (call: ToolCall) => void
   /**
-   * Fired at most once with the trailing usage block. Providing this callback
-   * is what opts the request into `stream_options.include_usage`; callers
-   * must tolerate it never firing (not every upstream reports usage).
+   * Fired at most once with the trailing usage block. Providing this callback is what opts the request into `stream_options.include_usage`; callers must tolerate it never firing (not every upstream reports usage).
    */
   onUsage?: (usage: ChatUsage) => void
 }
@@ -118,10 +98,7 @@ interface OpenAiChunk {
     }
   }>
   usage?: ChatUsage | null
-  // OpenAI-compatible gateways routinely return HTTP 200 and then signal a
-  // failure mid-stream as a JSON frame (e.g. context-length exceeded). Surface
-  // it instead of dropping the frame, otherwise the stream ends "cleanly" and
-  // the caller renders an empty/partial reply as a success.
+  // OpenAI-compatible gateways routinely return HTTP 200 and then signal a failure mid-stream as a JSON frame (e.g. context-length exceeded). Surface it instead of dropping the frame, otherwise the stream ends "cleanly" and the caller renders an empty/partial reply as a success.
   error?: { message?: string; type?: string; code?: string } | string
 }
 
@@ -133,10 +110,7 @@ export async function streamChat(input: StreamChatInput): Promise<void> {
     messages: input.messages,
     stream: true,
     ...(input.tools && input.tools.length ? { tools: input.tools } : {}),
-    // Always assert stream_options last so a caller-supplied
-    // modelOptions.stream_options can never survive (the doc promises it is
-    // reserved). `undefined` is dropped by JSON.stringify, so no key ships
-    // when usage isn't wanted.
+    // Always assert stream_options last so a caller-supplied modelOptions.stream_options can never survive (the doc promises it is reserved). `undefined` is dropped by JSON.stringify, so no key ships when usage isn't wanted.
     stream_options: wantUsage ? { include_usage: true } : undefined,
   }
 
@@ -158,32 +132,21 @@ export async function streamChat(input: StreamChatInput): Promise<void> {
     )
   }
 
-  // Tool-call deltas arrive fragmented across chunks (id once, arguments
-  // char-by-char). Accumulate by index, flush once the stream ends.
+  // Tool-call deltas arrive fragmented across chunks (id once, arguments char-by-char). Accumulate by index, flush once the stream ends.
   const toolCallAcc = new Map<number, { id: string; name: string; argsBuf: string }>()
-  // Latch the usage block so onUsage fires at most once with the final
-  // (last-seen) value — some OpenAI-compatible upstreams emit usage on every
-  // delta, not just the trailing chunk, but the callback contract is one-shot.
+  // Latch the usage block so onUsage fires at most once with the final (last-seen) value — some OpenAI-compatible upstreams emit usage on every delta, not just the trailing chunk, but the callback contract is one-shot.
   let usage: ChatUsage | undefined
-  // Some OpenAI-compatible gateways reject a streaming request with HTTP 200
-  // and a bare top-level JSON error body (no `data:` framing at all), so the
-  // per-frame error check below never runs. Buffer the raw body until the first
-  // real SSE frame (capped) so that, if none ever arrives, we can still surface
-  // a top-level `error` the same way completeChat/embed do.
+  // Some OpenAI-compatible gateways reject a streaming request with HTTP 200 and a bare top-level JSON error body (no `data:` framing at all), so the per-frame error check below never runs. Buffer the raw body until the first real SSE frame (capped) so that, if none ever arrives, we can still surface a top-level `error` the same way completeChat/embed do.
   let sawData = false
   let errorProbe = ''
-  // 1 MiB: large enough to also recover a full non-SSE completion body below
-  // (not just a small error body), while still bounding a response that never
-  // frames a single `data:` line.
+  // 1 MiB: large enough to also recover a full non-SSE completion body below (not just a small error body), while still bounding a response that never frames a single `data:` line.
   const ERROR_PROBE_CAP = 1024 * 1024
 
   const processLine = (rawLine: string): void => {
     if (!sawData && errorProbe.length < ERROR_PROBE_CAP) errorProbe += rawLine + '\n'
     if (rawLine.startsWith(':')) return // SSE comment / keep-alive
     if (!rawLine.startsWith('data:')) return
-    // The space after `data:` is optional per the SSE spec but always present
-    // in OpenAI's emitter. Strip with a regex so the rare upstream that omits
-    // it doesn't shift the JSON payload by one char.
+    // The space after `data:` is optional per the SSE spec but always present in OpenAI's emitter. Strip with a regex so the rare upstream that omits it doesn't shift the JSON payload by one char.
     const payload = rawLine.replace(/^data:\s?/, '').replace(/\s+$/, '')
     if (!payload || payload === '[DONE]') return
 
@@ -195,11 +158,7 @@ export async function streamChat(input: StreamChatInput): Promise<void> {
     }
     sawData = true // a real SSE frame parsed — this is a genuine event-stream
 
-    // A mid-stream error frame arrives after a 200, so the HTTP-level guard
-    // above never fires. Throw so the streaming loop rejects and the caller
-    // hits its error path instead of treating the truncated reply as success.
-    // Redact the same as the !res.ok branch above — a misconfigured upstream
-    // can echo the caller's own Authorization header into this frame too.
+    // A mid-stream error frame arrives after a 200, so the HTTP-level guard above never fires. Throw so the streaming loop rejects and the caller hits its error path instead of treating the truncated reply as success. Redact the same as the !res.ok branch above — a misconfigured upstream can echo the caller's own Authorization header into this frame too.
     if (chunk.error) {
       throw new Error(
         redactSecrets(
@@ -218,11 +177,7 @@ export async function streamChat(input: StreamChatInput): Promise<void> {
     }
     if (input.onToolCall && delta?.tool_calls) {
       delta.tool_calls.forEach((tc, idx) => {
-        // OpenAI carries the logical tool-call slot in each delta's own
-        // `index` field. A chunk's tool_calls array usually holds a single
-        // element, so the array position is always 0 — keying by it would
-        // collapse parallel/multiple tool calls into one. Fall back to the
-        // array position only when upstream omits `index`.
+        // OpenAI carries the logical tool-call slot in each delta's own `index` field. A chunk's tool_calls array usually holds a single element, so the array position is always 0 — keying by it would collapse parallel/multiple tool calls into one. Fall back to the array position only when upstream omits `index`.
         const i = tc.index ?? idx
         const cur = toolCallAcc.get(i) ?? { id: '', name: '', argsBuf: '' }
         if (tc.id) cur.id = tc.id
@@ -236,10 +191,7 @@ export async function streamChat(input: StreamChatInput): Promise<void> {
     }
   }
 
-  // iOS WKWebView (Obsidian mobile) doesn't expose a streaming response body —
-  // res.body is null even on a 200. Fall back to buffering and replaying so
-  // the reply still arrives (no incremental typing) instead of a misleading
-  // "HTTP 200 OK" error.
+  // iOS WKWebView (Obsidian mobile) doesn't expose a streaming response body — res.body is null even on a 200. Fall back to buffering and replaying so the reply still arrives (no incremental typing) instead of a misleading "HTTP 200 OK" error.
   if (!res.body) {
     const text = await res.text()
     for (const rawLine of text.split('\n')) processLine(rawLine.replace(/\r$/, ''))
@@ -259,35 +211,21 @@ export async function streamChat(input: StreamChatInput): Promise<void> {
           processLine(rawLine)
         }
       }
-      // Flush the decoder: a stream that ends mid-character (a multi-byte
-      // UTF-8 sequence split across the transport's final read) leaves 1-3
-      // bytes buffered inside the TextDecoder's streaming state. Without this,
-      // they're silently discarded — no error, no warning — which usually
-      // corrupts the closing `data:` line's JSON and gets it dropped by
-      // `processLine`'s parse-failure `catch`, along with the final delta and
-      // any trailing usage block it carried.
+      // Flush the decoder: a stream that ends mid-character (a multi-byte UTF-8 sequence split across the transport's final read) leaves 1-3 bytes buffered inside the TextDecoder's streaming state. Without this, they're silently discarded — no error, no warning — which usually corrupts the closing `data:` line's JSON and gets it dropped by `processLine`'s parse-failure `catch`, along with the final delta and any trailing usage block it carried.
       buf += decoder.decode()
     } catch (err) {
-      // The loop exited early — a mid-stream error frame thrown by
-      // `processLine`, or the request's `signal` aborting mid-read — so the
-      // body is only partially consumed. Cancel it so the underlying
-      // connection is torn down instead of left dangling.
+      // The loop exited early — a mid-stream error frame thrown by `processLine`, or the request's `signal` aborting mid-read — so the body is only partially consumed. Cancel it so the underlying connection is torn down instead of left dangling.
       await reader.cancel(err).catch(() => {})
       throw err
     } finally {
       reader.releaseLock()
     }
-    // Some upstreams close the connection after a `data:` line with no
-    // trailing newline (`[DONE]` or a final delta). Flush the remainder so we
-    // don't silently drop the last token.
+    // Some upstreams close the connection after a `data:` line with no trailing newline (`[DONE]` or a final delta). Flush the remainder so we don't silently drop the last token.
     const trailing = buf.replace(/\r$/, '').trim()
     if (trailing) processLine(trailing)
   }
 
-  // No SSE frame ever arrived: the upstream may have returned a plain JSON
-  // error body on a 200 (context-length exceeded, invalid model, quota, …).
-  // Surface a top-level `error` so the caller hits its error path instead of
-  // rendering an empty reply as a success — mirrors completeChat/embed.
+  // No SSE frame ever arrived: the upstream may have returned a plain JSON error body on a 200 (context-length exceeded, invalid model, quota, …). Surface a top-level `error` so the caller hits its error path instead of rendering an empty reply as a success — mirrors completeChat/embed.
   if (!sawData) {
     const probe = errorProbe.trim()
     if (probe) {
@@ -307,12 +245,7 @@ export async function streamChat(input: StreamChatInput): Promise<void> {
           )
         )
       }
-      // A gateway that ignored `stream: true` answers with a regular (non-SSE)
-      // 200 completion body — the reply is in choices[0].message.content (and/or
-      // tool_calls), not a `data:` delta frame — so nothing above emitted it.
-      // Surface it (text, tool calls, usage) so a non-streaming upstream isn't
-      // rendered as an empty success. Mirrors completeChat; OpenAiChunk carries
-      // `delta`, not `message`, so read through a completion-shaped cast.
+      // A gateway that ignored `stream: true` answers with a regular (non-SSE) 200 completion body — the reply is in choices[0].message.content (and/or tool_calls), not a `data:` delta frame — so nothing above emitted it. Surface it (text, tool calls, usage) so a non-streaming upstream isn't rendered as an empty success. Mirrors completeChat; OpenAiChunk carries `delta`, not `message`, so read through a completion-shaped cast.
       const completion = parsed as unknown as
         | {
             choices?: Array<{
@@ -355,8 +288,7 @@ export async function streamChat(input: StreamChatInput): Promise<void> {
       try {
         parsed = tc.argsBuf ? JSON.parse(tc.argsBuf) : {}
       } catch {
-        // Upstream emitted malformed JSON — pass the raw attempt through so
-        // the caller can at least see what was tried.
+        // Upstream emitted malformed JSON — pass the raw attempt through so the caller can at least see what was tried.
         parsed = tc.argsBuf
       }
       input.onToolCall({ id: tc.id, name: tc.name, input: parsed })
@@ -381,11 +313,7 @@ export interface ChatResult {
 }
 
 /**
- * One-shot (non-streaming) chat completion. Used by callers that don't render
- * tokens incrementally — the MCP server returns the whole reply as one tool
- * result. Honors {@link RequestOptions.timeoutMs}/`signal`; a chat call can be
- * slow, so callers should pass a generous timeout rather than the short one
- * used for account GETs.
+ * One-shot (non-streaming) chat completion. Used by callers that don't render tokens incrementally — the MCP server returns the whole reply as one tool result. Honors {@link RequestOptions.timeoutMs}/`signal`; a chat call can be slow, so callers should pass a generous timeout rather than the short one used for account GETs.
  */
 export async function completeChat(input: CompleteChatInput): Promise<ChatResult> {
   const body = {
@@ -418,10 +346,7 @@ export async function completeChat(input: CompleteChatInput): Promise<ChatResult
     usage?: ChatUsage | null
     error?: { message?: string; type?: string; code?: string } | string
   }
-  // Some gateways return HTTP 200 with a top-level `error` body instead of a
-  // non-2xx status. Surface it rather than handing back an empty reply.
-  // Redact the same as the !res.ok branch above — this can echo the caller's
-  // own Authorization header back too.
+  // Some gateways return HTTP 200 with a top-level `error` body instead of a non-2xx status. Surface it rather than handing back an empty reply. Redact the same as the !res.ok branch above — this can echo the caller's own Authorization header back too.
   if (json.error) {
     throw new Error(
       redactSecrets(

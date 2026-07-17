@@ -1,14 +1,8 @@
 // EveryAPI Obsidian plugin entry point.
 //
-// What this is, in one sentence: a right-sidebar chat panel that talks to
-// the EveryAPI gateway (one OpenAI-compatible /v1 endpoint, 240+ models),
-// sends the active note along as context, and inserts replies back into the
-// note — plus a status-bar balance readout and a settings tab.
+// What this is, in one sentence: a right-sidebar chat panel that talks to the EveryAPI gateway (one OpenAI-compatible /v1 endpoint, 240+ models), sends the active note along as context, and inserts replies back into the note — plus a status-bar balance readout and a settings tab.
 //
-// Implements the Claude Design handoff prototype (plugins/Obsidian.html).
-// The prototype's cross-surface shared store / simulated billing are design
-// fiction; here the gateway is the source of truth: /v1/models for the model
-// list, /api/usage/token/ for the balance, real SSE streaming for replies.
+// Implements the Claude Design handoff prototype (plugins/Obsidian.html). The prototype's cross-surface shared store / simulated billing are design fiction; here the gateway is the source of truth: /v1/models for the model list, /api/usage/token/ for the balance, real SSE streaming for replies.
 
 import { fetchBalanceUsd, fetchQuotaPerUsd } from '@everyapi-ai/gateway'
 import { type Editor, Plugin, WorkspaceLeaf, addIcon, getLanguage } from 'obsidian'
@@ -19,13 +13,10 @@ import { formatUsd, resolveLocale, setLocale, t } from './i18n'
 import { DEFAULT_SETTINGS, EveryApiSettings, EveryApiSettingTab } from './settings'
 import { ChatView, VIEW_TYPE_EVERYAPI } from './view'
 
-// Cap the selection/note text interpolated into a one-shot editor command so a
-// huge selection can't balloon the prompt (cost/latency/context-overflow).
+// Cap the selection/note text interpolated into a one-shot editor command so a huge selection can't balloon the prompt (cost/latency/context-overflow).
 const CMD_MAX_CHARS = 12_000
 
-// Monochrome silhouette of the EveryAPI mark (the hexagon "e") in a
-// 0 0 100 100 viewBox — Obsidian icons use currentColor, so the brand gradient
-// stays in the panel CSS and the icon stays theme-friendly.
+// Monochrome silhouette of the EveryAPI mark (the hexagon "e") in a 0 0 100 100 viewBox — Obsidian icons use currentColor, so the brand gradient stays in the panel CSS and the icon stays theme-friendly.
 const EVERYAPI_ICON = `<g fill="currentColor" transform="scale(0.1)"><g transform="translate(0.000000,1000.000000) scale(0.100000,-0.100000)">
 <path d="M5478 9580 c-58 -10 -123 -31 -253 -82 -98 -38 -193 -92 -370 -212
 -49 -34 -106 -69 -126 -78 -19 -9 -82 -47 -138 -84 -57 -38 -171 -112 -255
@@ -54,8 +45,7 @@ const EVERYAPI_ICON = `<g fill="currentColor" transform="scale(0.1)"><g transfor
 -429 213 -75 19 -128 25 -241 28 -80 2 -166 0 -192 -5z"/>
 </g></g>`
 
-// Don't hammer /api/usage/token/ — the balance moves per request, not per
-// keystroke. Forced refreshes (after a chat completes) bypass this.
+// Don't hammer /api/usage/token/ — the balance moves per request, not per keystroke. Forced refreshes (after a chat completes) bypass this.
 const BALANCE_MIN_INTERVAL_MS = 30_000
 
 export default class EveryApiPlugin extends Plugin {
@@ -65,9 +55,7 @@ export default class EveryApiPlugin extends Plugin {
 
   async onload(): Promise<void> {
     await this.loadSettings()
-    // getLanguage was added after our minimum supported Obsidian version; the
-    // runtime feature check preserves browser-locale then English fallback on
-    // older hosts where that export is absent.
+    // getLanguage was added after our minimum supported Obsidian version; the runtime feature check preserves browser-locale then English fallback on older hosts where that export is absent.
     setLocale(
       resolveLocale(
         typeof getLanguage === 'function' ? getLanguage : undefined,
@@ -85,9 +73,7 @@ export default class EveryApiPlugin extends Plugin {
       callback: () => void this.activateView(),
     })
 
-    // Editor command-palette actions: act on the selection (or whole note),
-    // open the panel, and send a preset prompt. editorCallback only exposes
-    // these when a markdown editor is focused.
+    // Editor command-palette actions: act on the selection (or whole note), open the panel, and send a preset prompt. editorCallback only exposes these when a markdown editor is focused.
     const editorCmd = (
       id: string,
       name: string,
@@ -133,8 +119,7 @@ export default class EveryApiPlugin extends Plugin {
     void this.refreshStatusBar(true)
   }
 
-  // Per Obsidian guidelines we don't detach our leaves in onunload —
-  // the workspace remembers them and re-binds on next enable.
+  // Per Obsidian guidelines we don't detach our leaves in onunload — the workspace remembers them and re-binds on next enable.
 
   async activateView(): Promise<void> {
     const { workspace } = this.app
@@ -154,9 +139,7 @@ export default class EveryApiPlugin extends Plugin {
     if (leaf?.view instanceof ChatView) leaf.view.submitPrompt(prompt)
   }
 
-  // Called (debounced) when the API key or base URL changes in settings, and
-  // directly after onboarding connects: re-render open panels and re-fetch
-  // the status-bar balance against the new credentials.
+  // Called (debounced) when the API key or base URL changes in settings, and directly after onboarding connects: re-render open panels and re-fetch the status-bar balance against the new credentials.
   onConnectionChanged(): void {
     for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE_EVERYAPI)) {
       if (leaf.view instanceof ChatView) {
@@ -183,13 +166,11 @@ export default class EveryApiPlugin extends Plugin {
         apiKey: this.settings.apiKey,
         clientApp: CLIENT_APP,
       }
-      // Resolve the deployment's real quota→USD peg so a retuned self-hosted
-      // instance shows a correct balance, not the default-peg figure.
+      // Resolve the deployment's real quota→USD peg so a retuned self-hosted instance shows a correct balance, not the default-peg figure.
       const usd = await fetchBalanceUsd(opts, await fetchQuotaPerUsd(opts))
       el.setText(usd === null ? 'EveryAPI' : t('status.balance', { balance: formatUsd(usd) }))
     } catch {
-      // Balance is decoration, not a feature gate — the panel keeps working
-      // without it (e.g. self-hosted gateways predating /api/usage/token/).
+      // Balance is decoration, not a feature gate — the panel keeps working without it (e.g. self-hosted gateways predating /api/usage/token/).
       el.setText('EveryAPI')
     }
   }

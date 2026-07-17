@@ -1,5 +1,4 @@
-// Pure, Obsidian-free helpers extracted from view.ts so they can be unit
-// tested without the Obsidian runtime (which isn't importable under Vitest).
+// Pure, Obsidian-free helpers extracted from view.ts so they can be unit tested without the Obsidian runtime (which isn't importable under Vitest).
 
 /** Human-readable token count: 1.5M, 200.0k, 842. */
 export function formatTokens(n: number): string {
@@ -20,11 +19,7 @@ export interface HistoryItem {
 }
 
 /**
- * Keep the most recent messages whose cumulative content length stays within
- * [maxChars], walking newest→oldest then restoring chronological order. This
- * sits on top of the count cap so a few very long turns can't blow a small
- * model's context window. Always keeps at least the newest item, even if it
- * alone exceeds the budget (dropping it would send an empty conversation).
+ * Keep the most recent messages whose cumulative content length stays within [maxChars], walking newest→oldest then restoring chronological order. This sits on top of the count cap so a few very long turns can't blow a small model's context window. Always keeps at least the newest item, even if it alone exceeds the budget (dropping it would send an empty conversation).
  */
 export function trimHistoryByChars(items: HistoryItem[], maxChars: number): HistoryItem[] {
   const kept: HistoryItem[] = []

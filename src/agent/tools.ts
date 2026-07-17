@@ -1,12 +1,5 @@
-// OpenAI-shaped tool definitions for the EveryAPI agentic NOTES tool set, as it
-// operates over an Obsidian vault. These mirror the canonical contract at
-// @everyapi-ai/agent-contract (the single source of truth across EveryAPI
-// agent-capable plugins) and we keep the EXACT contract names — read_file, list_dir,
-// search_text, write_file, apply_diff — for cross-plugin consistency. The
-// descriptions are written for notes ("file" = a vault note/file), and there is
-// NO execute_command: Obsidian has no shell. We ship these in the `tools` field
-// of /v1/chat/completions and rely on the gateway to translate them to each
-// upstream's native tool-use format — the plugin never converts client-side.
+// OpenAI-shaped tool definitions for the EveryAPI agentic NOTES tool set, as it operates over an Obsidian vault. These mirror the canonical contract at
+// @everyapi-ai/agent-contract (the single source of truth across EveryAPI agent-capable plugins) and we keep the EXACT contract names — read_file, list_dir, search_text, write_file, apply_diff — for cross-plugin consistency. The descriptions are written for notes ("file" = a vault note/file), and there is NO execute_command: Obsidian has no shell. We ship these in the `tools` field of /v1/chat/completions and rely on the gateway to translate them to each upstream's native tool-use format — the plugin never converts client-side.
 
 import {
   OBSIDIAN_AGENT_TOOL_NAMES,
@@ -34,8 +27,7 @@ export const TOOL_NAMES = OBSIDIAN_AGENT_TOOL_NAMES
 export type ToolName = (typeof TOOL_NAMES)[number]
 
 /**
- * Per-tool execution policy. `needsApproval` tools MUST get explicit, per-call
- * user approval before running — the gateway does not gate execution.
+ * Per-tool execution policy. `needsApproval` tools MUST get explicit, per-call user approval before running — the gateway does not gate execution.
  */
 export const TOOL_POLICY = Object.fromEntries(
   TOOL_NAMES.map((name) => {

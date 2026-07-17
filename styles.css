@@ -1,7 +1,4 @@
-/* EveryAPI panel styling. Layout/spacing track the design prototype
-   (plugins/Obsidian.html); colors lean on Obsidian theme variables so the
-   panel looks native in any theme, with the EveryAPI purple reserved for
-   brand moments (logo, send, insert, focus ring). */
+/* EveryAPI panel styling. Layout/spacing track the design prototype (plugins/Obsidian.html); colors lean on Obsidian theme variables so the panel looks native in any theme, with the EveryAPI purple reserved for brand moments (logo, send, insert, focus ring). */
 
 body {
   --everyapi-accent: #7c5cff;
@@ -232,8 +229,7 @@ body {
   width: 14px;
   height: 14px;
 }
-/* The model chip and send control are <button>s (keyboard a11y); strip the
-   native button chrome so they keep the chip/icon styling above. */
+/* The model chip and send control are <button>s (keyboard a11y); strip the native button chrome so they keep the chip/icon styling above. */
 .everyapi-chip.is-model,
 .everyapi-send {
   appearance: none;
@@ -322,16 +318,13 @@ body {
 }
 
 /* ---------- agent approval modal ---------- */
-/* Shown before any write_file / apply_diff touches the vault: the user reviews
-   the diff/new-note preview and explicitly confirms (the gate fails closed). */
+/* Shown before any write_file / apply_diff touches the vault: the user reviews the diff/new-note preview and explicitly confirms (the gate fails closed). */
 .everyapi-approval-hint {
   color: var(--text-muted);
   font-size: var(--font-ui-smaller);
   margin-bottom: 10px;
 }
-/* Shown only when the preview below is not the full content/diff that will be
-   written — kept visually distinct (border + warning color) so it can't be
-   mistaken for routine trailing text inside the scrollable preview. */
+/* Shown only when the preview below is not the full content/diff that will be written — kept visually distinct (border + warning color) so it can't be mistaken for routine trailing text inside the scrollable preview. */
 .everyapi-approval-warning {
   color: var(--text-warning, var(--text-error));
   background: var(--background-modifier-error, var(--background-secondary));

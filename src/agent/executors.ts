@@ -1,27 +1,14 @@
-// Per-host executors for the EveryAPI agentic NOTES tool set, implemented
-// against the Obsidian Vault API and confined to the vault. The gateway only
-// translates tool schemas; it does NOT gate execution — so every safety guard
-// is enforced HERE, before any tool runs:
+// Per-host executors for the EveryAPI agentic NOTES tool set, implemented against the Obsidian Vault API and confined to the vault. The gateway only translates tool schemas; it does NOT gate execution — so every safety guard is enforced HERE, before any tool runs:
 //
-//   1. Path confinement: every path is run through the pure lexical guard
-//      (paths.ts) and rejected if it escapes the vault ('..', absolute). The
-//      Vault API is already vault-scoped; this adds clean errors + defense.
+//   1. Path confinement: every path is run through the pure lexical guard (paths.ts) and rejected if it escapes the vault ('..', absolute). The Vault API is already vault-scoped; this adds clean errors + defense.
 //   2. Approval before mutating: write_file / apply_diff block on an explicit
 //      per-call user confirmation (Obsidian modal); reject => `denied` result.
 //   3. Output caps: read/list/search output is size-bounded.
-//   4. Untrusted data: tool output is never treated as instructions; we never
-//      auto-escalate approval based on what a note said.
-//   5. Secrets: obvious credential-looking files are skipped on read/search
-//      (a vault has no shell secrets, but a synced repo might).
-//   6. Regex safety: search_text patterns are screened by a pure heuristic
-//      (regex-safety.ts) for the classic catastrophic-backtracking shape
-//      before compiling — Electron's renderer is single-threaded and a
-//      pathological RegExp.test() call cannot be interrupted or timed out.
+//   4. Untrusted data: tool output is never treated as instructions; we never auto-escalate approval based on what a note said.
+//   5. Secrets: obvious credential-looking files are skipped on read/search (a vault has no shell secrets, but a synced repo might).
+//   6. Regex safety: search_text patterns are screened by a pure heuristic (regex-safety.ts) for the classic catastrophic-backtracking shape before compiling — Electron's renderer is single-threaded and a pathological RegExp.test() call cannot be interrupted or timed out.
 //
-// Every executor returns a structured result envelope and NEVER throws into the
-// loop, so the model can self-correct. The pure diff/match logic lives in
-// diff.ts; the line-numbering in format.ts; the regex guard in regex-safety.ts
-// — all unit-tested without Obsidian.
+// Every executor returns a structured result envelope and NEVER throws into the loop, so the model can self-correct. The pure diff/match logic lives in diff.ts; the line-numbering in format.ts; the regex guard in regex-safety.ts — all unit-tested without Obsidian.
 
 import { App, TFile, TFolder, type Vault } from 'obsidian'
 
@@ -67,9 +54,7 @@ export class VaultExecutors {
   }
 
   /**
-   * Dispatch a parsed tool call to its executor. Always resolves to a
-   * ToolResult — never throws — so a guard rejection becomes model-visible
-   * feedback rather than a crashed loop.
+   * Dispatch a parsed tool call to its executor. Always resolves to a ToolResult — never throws — so a guard rejection becomes model-visible feedback rather than a crashed loop.
    */
   async execute(name: ToolName, args: Record<string, unknown>): Promise<ToolResult> {
     try {
@@ -317,9 +302,7 @@ export class VaultExecutors {
     if (!(file instanceof TFile)) return err(`'${rel}' is not an editable file.`)
 
     const rawOld = await this.vault.read(file)
-    // Match and edit in LF space, restoring the file's dominant line ending on
-    // write — so an LF-authored SEARCH block matches a CRLF note (the most
-    // common apply_diff failure) without corrupting line endings.
+    // Match and edit in LF space, restoring the file's dominant line ending on write — so an LF-authored SEARCH block matches a CRLF note (the most common apply_diff failure) without corrupting line endings.
     const crlf = rawOld.includes('\r\n')
     const oldText = crlf ? rawOld.replace(/\r\n/g, '\n') : rawOld
 
@@ -331,10 +314,7 @@ export class VaultExecutors {
     if (!approved) return denied('Propose a different edit or explain why this change is needed.')
 
     await this.vault.modify(file, crlf ? applied.text.replace(/\n/g, '\r\n') : applied.text)
-    // Surface any location-uncertainty diagnostics from locateBlock (e.g. a
-    // match that landed far from the requested :start_line: hint) instead of
-    // silently dropping them — the model/user should see when a SEARCH block
-    // was ambiguous even though the edit still applied.
+    // Surface any location-uncertainty diagnostics from locateBlock (e.g. a match that landed far from the requested :start_line: hint) instead of silently dropping them — the model/user should see when a SEARCH block was ambiguous even though the edit still applied.
     const warningNote = applied.warnings?.length ? `\n${applied.warnings.join('\n')}` : ''
     return ok(`Applied ${applied.blocks} edit block(s) to ${rel}.${warningNote}`)
   }
@@ -356,8 +336,7 @@ export class VaultExecutors {
         try {
           await this.vault.createFolder(acc)
         } catch {
-          // A concurrent create may have made it; ignore and let the final
-          // vault.create surface any real failure.
+          // A concurrent create may have made it; ignore and let the final vault.create surface any real failure.
         }
       }
     }

@@ -1,26 +1,17 @@
-// Obsidian Modal-backed approval gate for mutating note tools (safety §2).
-// Approval is per call, not a session-wide blanket grant: each write_file /
-// apply_diff blocks on an explicit modal confirmation that shows the user
-// exactly what will change (a unified diff or a new-note preview) before
-// anything touches the vault.
+// Obsidian Modal-backed approval gate for mutating note tools (safety §2). Approval is per call, not a session-wide blanket grant: each write_file / apply_diff blocks on an explicit modal confirmation that shows the user exactly what will change (a unified diff or a new-note preview) before anything touches the vault.
 //
-// The gate FAILS CLOSED: any non-approving outcome — Cancel, Escape, or
-// closing the modal another way — resolves to false, so a tool the user did not
-// explicitly approve is denied.
+// The gate FAILS CLOSED: any non-approving outcome — Cancel, Escape, or closing the modal another way — resolves to false, so a tool the user did not explicitly approve is denied.
 
 import { App, Modal } from 'obsidian'
 
 import { t } from '../i18n'
 
 /**
- * How a mutating tool asks the user for permission. The view supplies a real
- * implementation backed by Obsidian modals; tests can inject a stub. Returns
- * true to proceed, false to deny.
+ * How a mutating tool asks the user for permission. The view supplies a real implementation backed by Obsidian modals; tests can inject a stub. Returns true to proceed, false to deny.
  */
 export interface ApprovalGate {
   /** Confirm writing `content` to `relPath` (preview is a diff/new-note
-   *  preview). `truncated` is true when `preview` omits part of the content
-   *  that will actually be written — the implementation must surface this
+   *  preview). `truncated` is true when `preview` omits part of the content that will actually be written — the implementation must surface this
    *  distinctly, not bury it as trailing text in the preview. */
   confirmWrite(
     relPath: string,
@@ -75,9 +66,7 @@ export class ObsidianApprovalGate implements ApprovalGate {
 }
 
 /**
- * A confirm/cancel modal that previews a proposed vault change. `resolve` is
- * called exactly once: with true only when the confirm button is clicked, with
- * false on Cancel or any dismissal (onClose), so the gate fails closed.
+ * A confirm/cancel modal that previews a proposed vault change. `resolve` is called exactly once: with true only when the confirm button is clicked, with false on Cancel or any dismissal (onClose), so the gate fails closed.
  */
 class ApprovalModal extends Modal {
   private decided = false
@@ -102,11 +91,7 @@ class ApprovalModal extends Modal {
       text: t('approval.reviewHint'),
     })
     if (this.truncated) {
-      // This preview does NOT show everything that will be written — the tool
-      // executor caps preview length for renderability, but writes the full,
-      // untruncated content/diff on approval. Call this out as a distinct,
-      // visually prominent element rather than trailing text inside the
-      // scrollable <pre> block, which a user can easily miss.
+      // This preview does NOT show everything that will be written — the tool executor caps preview length for renderability, but writes the full, untruncated content/diff on approval. Call this out as a distinct, visually prominent element rather than trailing text inside the scrollable <pre> block, which a user can easily miss.
       contentEl.createDiv({
         cls: 'everyapi-approval-warning',
         text: t('approval.truncatedWarning'),

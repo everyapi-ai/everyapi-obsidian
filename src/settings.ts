@@ -8,9 +8,7 @@ import type EveryApiPlugin from './main'
 export interface EveryApiSettings {
   apiKey: string
   baseUrl: string
-  // Model id used for new chats. Left empty by default — the view resolves it
-  // at runtime from /v1/models so we don't ship a hardcoded version number
-  // that ages out (same reasoning as apps/raycast).
+  // Model id used for new chats. Left empty by default — the view resolves it at runtime from /v1/models so we don't ship a hardcoded version number that ages out (same reasoning as apps/raycast).
   defaultModel: string
 }
 
@@ -22,9 +20,7 @@ export const DEFAULT_SETTINGS: EveryApiSettings = {
 
 export class EveryApiSettingTab extends PluginSettingTab {
   plugin: EveryApiPlugin
-  // Settings save on every keystroke; the expensive follow-ups (re-render
-  // open panels, re-fetch the status-bar balance) are debounced so typing a
-  // key doesn't fire a request per character.
+  // Settings save on every keystroke; the expensive follow-ups (re-render open panels, re-fetch the status-bar balance) are debounced so typing a key doesn't fire a request per character.
   private notifyChanged = debounce(() => this.plugin.onConnectionChanged(), 800, true)
 
   constructor(app: App, plugin: EveryApiPlugin) {
@@ -71,9 +67,7 @@ export class EveryApiSettingTab extends PluginSettingTab {
     void this.renderModelSetting(containerEl)
   }
 
-  // Default-model picker: a dropdown populated from /v1/models when the key
-  // works, falling back to a free-text field when the catalog can't be loaded
-  // (no key yet, offline, self-hosted gateway without /v1/models).
+  // Default-model picker: a dropdown populated from /v1/models when the key works, falling back to a free-text field when the catalog can't be loaded (no key yet, offline, self-hosted gateway without /v1/models).
   private async renderModelSetting(container: HTMLElement): Promise<void> {
     const s = this.plugin.settings
     const setting = new Setting(container)

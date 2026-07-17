@@ -1,9 +1,4 @@
-// The EveryAPI agent system prompt for the Obsidian surface. Prepended as the
-// first `system` message on every agentic request. Adapted from the canonical
-// agent prompt in @everyapi-ai/agent-contract for a notes assistant
-// working inside a vault — not a coding agent and with no shell. Kept
-// model-agnostic: the tool catalog is delivered through the `tools` array
-// (translated by the gateway), not pasted here.
+// The EveryAPI agent system prompt for the Obsidian surface. Prepended as the first `system` message on every agentic request. Adapted from the canonical agent prompt in @everyapi-ai/agent-contract for a notes assistant working inside a vault — not a coding agent and with no shell. Kept model-agnostic: the tool catalog is delivered through the `tools` array (translated by the gateway), not pasted here.
 
 export const AGENT_SYSTEM_PROMPT = `You are EveryAPI's assistant working inside the user's Obsidian vault. You can read, list, search, and edit the notes and files in this vault using the tools provided to you. The vault is the only place you can touch; every path you pass is relative to the vault root.
 

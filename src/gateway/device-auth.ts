@@ -1,9 +1,4 @@
-// Device authorization grant (RFC 8628) → relay key, ported straight from the
-// Go CLI: clients/cli/cmd/login.go, clients/sdk/api/device_auth.go, and
-// clients/sdk/api/relaykey.go. The user-facing flow: start a flow, show the
-// user_code + verification_uri, poll until the user confirms in their browser,
-// then exchange the management access_token for the account's newest enabled
-// `sk-everyapi-…` relay key (the access_token alone can't relay).
+// Device authorization grant (RFC 8628) → relay key, ported straight from the Go CLI: clients/cli/cmd/login.go, clients/sdk/api/device_auth.go, and clients/sdk/api/relaykey.go. The user-facing flow: start a flow, show the user_code + verification_uri, poll until the user confirms in their browser, then exchange the management access_token for the account's newest enabled `sk-everyapi-…` relay key (the access_token alone can't relay).
 
 import { redactSecrets } from './http'
 import { adminApiBase } from './url'
@@ -72,9 +67,7 @@ function headers(o: Opts, auth?: { token: string; userId: number }): Record<stri
 }
 
 /**
- * A definitive response from the server (non-2xx, or a `success:false` envelope)
- * — as opposed to a transport-level failure. The poll loop surfaces these
- * immediately instead of retrying, mirroring the Go SDK's APIError handling.
+ * A definitive response from the server (non-2xx, or a `success:false` envelope) — as opposed to a transport-level failure. The poll loop surfaces these immediately instead of retrying, mirroring the Go SDK's APIError handling.
  */
 export class ApiResponseError extends Error {
   constructor(
@@ -94,9 +87,7 @@ async function unwrap<T>(res: Response, url: string, secret?: string): Promise<T
   } catch {
     /* non-JSON handled below */
   }
-  // Server-supplied strings can echo the request's Authorization header (a
-  // proxy that reflects headers on a 5xx) or a relay key — scrub them before
-  // they reach an Error/log line, matching http.ts/chat.ts/account.ts.
+  // Server-supplied strings can echo the request's Authorization header (a proxy that reflects headers on a 5xx) or a relay key — scrub them before they reach an Error/log line, matching http.ts/chat.ts/account.ts.
   const redact = (m: string): string => redactSecrets(m, secret)
   if (!res.ok) {
     throw new ApiResponseError(
@@ -168,9 +159,7 @@ interface TokenSummary {
 }
 
 /**
- * Exchange a management access_token for the account's newest enabled relay key.
- * Mirrors api.ResolveRelayKey: list tokens (GET /api/token/), pick the first
- * enabled one, fetch its plaintext key (POST /api/token/{id}/key).
+ * Exchange a management access_token for the account's newest enabled relay key. Mirrors api.ResolveRelayKey: list tokens (GET /api/token/), pick the first enabled one, fetch its plaintext key (POST /api/token/{id}/key).
  */
 export async function resolveRelayKey(
   o: Opts,
@@ -249,9 +238,7 @@ async function oauthForm<T>(
   })
   let data: OAuthFormResult<T>['data'] = {}
   try {
-    // JSON.parse('null') / '123' / '"x"' parse successfully but aren't objects;
-    // adopting one would make callers' `data.error` throw a TypeError. Only take
-    // a parsed object, so a `null`/primitive body falls back to the empty {}.
+    // JSON.parse('null') / '123' / '"x"' parse successfully but aren't objects; adopting one would make callers' `data.error` throw a TypeError. Only take a parsed object, so a `null`/primitive body falls back to the empty {}.
     const parsed: unknown = JSON.parse(await res.text())
     if (parsed && typeof parsed === 'object') data = parsed as OAuthFormResult<T>['data']
   } catch {
@@ -265,9 +252,7 @@ interface OAuthDeviceStart extends DeviceAuthStartResp {
 }
 
 /**
- * OAuth 2.0 Device Authorization Grant (RFC 8628) against /api/oauth2/*. The
- * issued access_token IS the relay key (sk-everyapi-…), so there's no separate
- * relay-key resolution. Throws OAuthEndpointMissing when the routes are absent.
+ * OAuth 2.0 Device Authorization Grant (RFC 8628) against /api/oauth2/*. The issued access_token IS the relay key (sk-everyapi-…), so there's no separate relay-key resolution. Throws OAuthEndpointMissing when the routes are absent.
  */
 async function loginWithOAuth2Device(opts: {
   baseUrl: string
@@ -283,10 +268,7 @@ async function loginWithOAuth2Device(opts: {
     opts.userAgent,
     opts.signal
   )
-  // Fall back to legacy when the routes are absent (404) or the client isn't
-  // recognized (invalid_client / unauthorized_client). A transient non-2xx
-  // (5xx) is a real error — don't mis-read its empty body as "unavailable" and
-  // silently downgrade.
+  // Fall back to legacy when the routes are absent (404) or the client isn't recognized (invalid_client / unauthorized_client). A transient non-2xx (5xx) is a real error — don't mis-read its empty body as "unavailable" and silently downgrade.
   if (
     begin.status === 404 ||
     begin.data.error === 'invalid_client' ||
@@ -296,10 +278,7 @@ async function loginWithOAuth2Device(opts: {
   }
   if (begin.data.error)
     throw new ApiResponseError(
-      // The device-start request carries no secret (client_id is a public OAuth
-      // client identifier), so only the sk-everyapi- format regex applies —
-      // don't scrub the client_id, which a developer needs to diagnose a
-      // client-registration failure.
+      // The device-start request carries no secret (client_id is a public OAuth client identifier), so only the sk-everyapi- format regex applies — don't scrub the client_id, which a developer needs to diagnose a client-registration failure.
       redactSecrets(begin.data.error_description || begin.data.error),
       begin.status
     )
@@ -370,12 +349,7 @@ async function loginWithOAuth2Device(opts: {
         expiresAt: poll.data.expires_in ? Date.now() + poll.data.expires_in * 1000 : undefined,
       }
     }
-    // No recognized OAuth error field and no token. A 2xx here is a spec-legal
-    // keep-polling. But a non-2xx with an empty/non-JSON body (a proxy 502, a
-    // backend restart) carries no `error`, so it would otherwise fall through
-    // and loop silently until the deadline — then mis-report "code expired"
-    // even though the user authorized. Count it against the same transient
-    // budget the thrown-fetch path uses, and surface the real cause once spent.
+    // No recognized OAuth error field and no token. A 2xx here is a spec-legal keep-polling. But a non-2xx with an empty/non-JSON body (a proxy 502, a backend restart) carries no `error`, so it would otherwise fall through and loop silently until the deadline — then mis-report "code expired" even though the user authorized. Count it against the same transient budget the thrown-fetch path uses, and surface the real cause once spent.
     if (poll.status >= 200 && poll.status < 300) {
       transientFails = 0
       continue
@@ -387,10 +361,7 @@ async function loginWithOAuth2Device(opts: {
 }
 
 /**
- * Refresh an OAuth2 device-issued key (grant_type=refresh_token). Returns the
- * new key + rotated refresh token + new expiry. Throws on failure — the caller
- * keeps the old key and/or prompts a fresh sign-in. Only the OAuth2 flow issues
- * refresh tokens; legacy keys never call this.
+ * Refresh an OAuth2 device-issued key (grant_type=refresh_token). Returns the new key + rotated refresh token + new expiry. Throws on failure — the caller keeps the old key and/or prompts a fresh sign-in. Only the OAuth2 flow issues refresh tokens; legacy keys never call this.
  */
 export async function refreshDeviceToken(opts: {
   baseUrl: string
@@ -409,9 +380,7 @@ export async function refreshDeviceToken(opts: {
   )
   if (r.data.error || !r.data.access_token) {
     throw new ApiResponseError(
-      // Thread the live refresh_token so a proxy that reflects the request body
-      // into error_description cannot leak it (it isn't sk-everyapi-shaped, so
-      // the format regex alone would miss it), matching every other error path.
+      // Thread the live refresh_token so a proxy that reflects the request body into error_description cannot leak it (it isn't sk-everyapi-shaped, so the format regex alone would miss it), matching every other error path.
       redactSecrets(
         r.data.error_description || r.data.error || 'refresh failed',
         opts.refreshToken
@@ -427,9 +396,7 @@ export async function refreshDeviceToken(opts: {
 }
 
 /**
- * Full legacy device-auth login → relay key. Ported from cmd/login.go +
- * device_auth.go's PollUntilDone: adaptive interval, slow_down backoff, a
- * small transient-error budget, and the same terminal states.
+ * Full legacy device-auth login → relay key. Ported from cmd/login.go + device_auth.go's PollUntilDone: adaptive interval, slow_down backoff, a small transient-error budget, and the same terminal states.
  */
 async function loginWithLegacyDeviceAuth(opts: {
   baseUrl: string
@@ -459,9 +426,7 @@ async function loginWithLegacyDeviceAuth(opts: {
       poll = await deviceAuthPoll(o, start.device_code, opts.signal)
     } catch (err) {
       if (opts.signal.aborted) throw new DeviceAuthError('cancelled', 'Sign-in cancelled.')
-      // A definitive server response (4xx/5xx, success:false) is final — surface
-      // it now. Only transport-level failures (the user mid-browser, a network
-      // blip) are retried against a small budget.
+      // A definitive server response (4xx/5xx, success:false) is final — surface it now. Only transport-level failures (the user mid-browser, a network blip) are retried against a small budget.
       if (err instanceof ApiResponseError) throw err
       if (++transientFails > 3) throw err
       continue
@@ -490,10 +455,7 @@ async function loginWithLegacyDeviceAuth(opts: {
 }
 
 /**
- * Device-auth login that supports BOTH backends: the OAuth 2.0 device grant
- * (/api/oauth2/*, tried first when `clientId` is given) and the legacy
- * /api/cli/device-auth-* flow (used when the gateway has no oauth2 routes). A
- * client therefore works against old and new deployments alike.
+ * Device-auth login that supports BOTH backends: the OAuth 2.0 device grant (/api/oauth2/*, tried first when `clientId` is given) and the legacy /api/cli/device-auth-* flow (used when the gateway has no oauth2 routes). A client therefore works against old and new deployments alike.
  */
 export async function loginWithDeviceAuth(opts: {
   baseUrl: string
@@ -508,8 +470,7 @@ export async function loginWithDeviceAuth(opts: {
     try {
       return await loginWithOAuth2Device({ ...opts, clientId: opts.clientId })
     } catch (err) {
-      // Only a missing-endpoint signal falls through to legacy; real errors
-      // (denied, expired, network) surface to the caller.
+      // Only a missing-endpoint signal falls through to legacy; real errors (denied, expired, network) surface to the caller.
       if (!(err instanceof OAuthEndpointMissing)) throw err
     }
   }

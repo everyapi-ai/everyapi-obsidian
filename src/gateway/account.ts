@@ -1,6 +1,4 @@
-// Account-scoped reads under `/api`: wallet/balance, the usage log, and a
-// client-side rollup of that log. All authenticated with the same
-// `sk-everyapi-` bearer token (TokenAuthReadOnly on the backend).
+// Account-scoped reads under `/api`: wallet/balance, the usage log, and a client-side rollup of that log. All authenticated with the same `sk-everyapi-` bearer token (TokenAuthReadOnly on the backend).
 
 import { getJson, redactSecrets, type RequestOptions } from './http'
 import { adminApiBase, QUOTA_PER_USD } from './url'
@@ -24,11 +22,7 @@ export interface LogRow {
   completion_tokens: number
 }
 
-// The `/api` envelope is `{ code | success, message, data }`. Only an explicit
-// boolean `false` is a rejection — a missing flag (or a non-boolean `code`,
-// which some envelopes use to carry a numeric status) still means success when
-// `data` is present. This matches apps/neovim and apps/raycast; the earlier
-// per-surface clients that required `code === true` rejected valid responses.
+// The `/api` envelope is `{ code | success, message, data }`. Only an explicit boolean `false` is a rejection — a missing flag (or a non-boolean `code`, which some envelopes use to carry a numeric status) still means success when `data` is present. This matches apps/neovim and apps/raycast; the earlier per-surface clients that required `code === true` rejected valid responses.
 interface Envelope<T> {
   code?: unknown
   success?: unknown
@@ -37,22 +31,11 @@ interface Envelope<T> {
 }
 
 function envelopeError(body: Envelope<unknown>, apiKey?: string): string | null {
-  // Same rationale as chat.ts/embeddings.ts: a 200-OK envelope-level failure
-  // message is upstream/proxy-controlled the same way a non-2xx body is, and
-  // this package is bundled into the MCP server (fetchWallet's caller
-  // forwards a thrown Error verbatim as an LLM-visible tool result) and every
-  // editor extension — a reflected Authorization header must not survive
-  // into either.
+  // Same rationale as chat.ts/embeddings.ts: a 200-OK envelope-level failure message is upstream/proxy-controlled the same way a non-2xx body is, and this package is bundled into the MCP server (fetchWallet's caller forwards a thrown Error verbatim as an LLM-visible tool result) and every editor extension — a reflected Authorization header must not survive into either.
   if (body.code === false || body.success === false) {
     return redactSecrets(body.message || 'gateway rejected the request', apiKey)
   }
-  // Some deployments signal failure with a shape this client doesn't
-  // special-case above — e.g. a non-boolean error code (`{ code: 40100,
-  // message: "token revoked" }`) with no `data` and no boolean success/code
-  // flag. That's neither a recognized success (`data` present, or an explicit
-  // `code`/`success: true`) nor a recognized failure, so callers that fall
-  // back to an empty array on a non-array `data` would otherwise swallow it
-  // silently. Surface the message rather than degrade to "no data".
+  // Some deployments signal failure with a shape this client doesn't special-case above — e.g. a non-boolean error code (`{ code: 40100, message: "token revoked" }`) with no `data` and no boolean success/code flag. That's neither a recognized success (`data` present, or an explicit `code`/`success: true`) nor a recognized failure, so callers that fall back to an empty array on a non-array `data` would otherwise swallow it silently. Surface the message rather than degrade to "no data".
   if (body.message && body.data === undefined && body.code !== true && body.success !== true) {
     return redactSecrets(body.message, apiKey)
   }
@@ -80,13 +63,7 @@ export async function fetchLogs(opts: RequestOptions): Promise<LogRow[]> {
 }
 
 /**
- * GET `{admin}/status` — the deployment's quota→USD peg (`quota_per_unit`).
- * Self-hosted operators can retune it; the public/default deployment returns
- * {@link QUOTA_PER_USD}. Falls back to that default when the field is
- * absent/non-positive or the request fails, so a caller can always format with
- * the result. Pass it to {@link fmtUsd} (and any `quota / peg` math) instead of
- * the hardcoded constant. The endpoint is public, but we still send auth since
- * every other admin read does.
+ * GET `{admin}/status` — the deployment's quota→USD peg (`quota_per_unit`). Self-hosted operators can retune it; the public/default deployment returns {@link QUOTA_PER_USD}. Falls back to that default when the field is absent/non-positive or the request fails, so a caller can always format with the result. Pass it to {@link fmtUsd} (and any `quota / peg` math) instead of the hardcoded constant. The endpoint is public, but we still send auth since every other admin read does.
  */
 export async function fetchQuotaPerUsd(opts: RequestOptions): Promise<number> {
   try {
@@ -111,11 +88,7 @@ export interface StatusInfo {
 }
 
 /**
- * GET `{admin}/status` — deployment identity + the quota→USD peg in one read.
- * A richer sibling of {@link fetchQuotaPerUsd} for callers that also want to
- * show which deployment/version a key is hitting (e.g. a status tooltip). The
- * endpoint is public; we send auth like every other admin read. Never throws —
- * every field falls back so a caller can always render.
+ * GET `{admin}/status` — deployment identity + the quota→USD peg in one read. A richer sibling of {@link fetchQuotaPerUsd} for callers that also want to show which deployment/version a key is hitting (e.g. a status tooltip). The endpoint is public; we send auth like every other admin read. Never throws — every field falls back so a caller can always render.
  */
 export async function fetchStatus(opts: RequestOptions): Promise<StatusInfo> {
   try {
@@ -157,9 +130,7 @@ export async function fetchBalanceUsd(
 }
 
 // ---------------------------------------------------------------------------
-// Pricing. /api/pricing returns raw model/completion ratios; EveryAPI's
-// per-1M-token price is the same math as apps/landingpage/scripts/gen-pricing
-// and apps/jetbrains: ratio 1 == $2/1M upstream, EveryAPI charges a flat 15%.
+// Pricing. /api/pricing returns raw model/completion ratios; EveryAPI's per-1M-token price is the same math as apps/landingpage/scripts/gen-pricing and apps/jetbrains: ratio 1 == $2/1M upstream, EveryAPI charges a flat 15%.
 
 const RATE_BASE_PER_1M = 2
 const EVERYAPI_DISCOUNT = 0.15
@@ -186,9 +157,7 @@ export async function fetchPricing(opts: RequestOptions): Promise<ModelPrice[]> 
   if (err) throw new Error(err)
   const rows = Array.isArray(body.data) ? body.data : []
   return rows.flatMap((r) => {
-    // Drop unpriced models (ratio <= 0): the backend uses ratio 0 as an
-    // "unpriced / not sold" sentinel, and rendering it as a real $0.00 model
-    // misleads. Matches apps/landingpage/scripts/gen-pricing.mjs, which skips
+    // Drop unpriced models (ratio <= 0): the backend uses ratio 0 as an "unpriced / not sold" sentinel, and rendering it as a real $0.00 model misleads. Matches apps/landingpage/scripts/gen-pricing.mjs, which skips
     // ratio <= 0.
     if (!r.model_name || typeof r.model_ratio !== 'number' || r.model_ratio <= 0) return []
     const completionRatio = typeof r.completion_ratio === 'number' ? r.completion_ratio : 1
@@ -203,8 +172,7 @@ export async function fetchPricing(opts: RequestOptions): Promise<ModelPrice[]> 
 }
 
 // ---------------------------------------------------------------------------
-// Usage aggregation. The backend ships no per-token rollup, so we synthesize
-// one from the last-N log rows (ported from apps/raycast/src/wallet.tsx).
+// Usage aggregation. The backend ships no per-token rollup, so we synthesize one from the last-N log rows (ported from apps/raycast/src/wallet.tsx).
 
 export interface UsageSummary {
   count: number
@@ -225,10 +193,7 @@ export interface UsageSummary {
 
 export function summarize(logs: LogRow[], now: Date = new Date()): UsageSummary {
   const todayStart = new Date(new Date(now).setHours(0, 0, 0, 0)).getTime() / 1000
-  // Bucket boundaries are local calendar midnights, not fixed 86400s steps:
-  // a DST week has 23h/25h days, so dividing an epoch delta by a constant
-  // would land near-midnight logs in the adjacent day's bucket. index 0 = 6
-  // days ago … index 6 = today.
+  // Bucket boundaries are local calendar midnights, not fixed 86400s steps: a DST week has 23h/25h days, so dividing an epoch delta by a constant would land near-midnight logs in the adjacent day's bucket. index 0 = 6 days ago … index 6 = today.
   const dayStarts = Array.from<number>({ length: 7 })
   for (let i = 0; i < 7; i++) {
     const d = new Date(now)

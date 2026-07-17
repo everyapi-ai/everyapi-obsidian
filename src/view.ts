@@ -1,13 +1,6 @@
-// The EveryAPI chat panel — an ItemView that lives in the right sidebar.
-// Faithful to the Claude Design prototype (plugins/Obsidian.html): a chat
-// whose replies can be inserted into the active note as blockquotes, a
-// context chip showing which note rides along with each question, a model
-// chip for switching gateway models, and an inline onboarding card when no
-// API key is configured yet.
+// The EveryAPI chat panel — an ItemView that lives in the right sidebar. Faithful to the Claude Design prototype (plugins/Obsidian.html): a chat whose replies can be inserted into the active note as blockquotes, a context chip showing which note rides along with each question, a model chip for switching gateway models, and an inline onboarding card when no API key is configured yet.
 //
-// Conversations are deliberately kept in memory only (per panel, per
-// session): persisting chat logs into data.json would churn vault sync and
-// silently store prompt content on disk.
+// Conversations are deliberately kept in memory only (per panel, per session): persisting chat logs into data.json would churn vault sync and silently store prompt content on disk.
 
 import { fetchModels, type GatewayModel } from '@everyapi-ai/gateway'
 import {
@@ -35,13 +28,9 @@ export const VIEW_TYPE_EVERYAPI = 'everyapi-chat'
 
 interface ChatMessage {
   role: 'user' | 'assistant'
-  // The bubble's display text — for an agentic reply this is the cumulative
-  // transcript (interim narration + tool-step lines + final answer).
+  // The bubble's display text — for an agentic reply this is the cumulative transcript (interim narration + tool-step lines + final answer).
   text: string
-  // The model's clean final answer, without the tool-step transcript. Set when
-  // the agent loop returns; the insert/append/copy actions use this so the
-  // user's note gets the answer, not the internal tool trace. Falls back to
-  // `text` when absent (e.g. an aborted turn that never produced a final turn).
+  // The model's clean final answer, without the tool-step transcript. Set when the agent loop returns; the insert/append/copy actions use this so the user's note gets the answer, not the internal tool trace. Falls back to `text` when absent (e.g. an aborted turn that never produced a final turn).
   answer?: string
   model?: string
   tokens?: number
@@ -54,17 +43,13 @@ const SUGGESTION_KEYS = [
   'suggestion.reviewNote',
 ] as const
 
-// Vault-priming digest sent on the first agent turn (Roo's environment_details):
-// how many file paths to list, how deep into the tree, and which folders to skip.
+// Vault-priming digest sent on the first agent turn (Roo's environment_details): how many file paths to list, how deep into the tree, and which folders to skip.
 const ENV_ENTRIES = 200
 const ENV_DEPTH = 2
 const ENV_IGNORED_DIRS = new Set(['.git', '.obsidian', '.trash', 'node_modules'])
-// How many recent messages ride along as conversation history. Count-capped
-// first, then…
+// How many recent messages ride along as conversation history. Count-capped first, then…
 const MAX_HISTORY = 24
-// …size-capped: even within the count cap, a few very long turns plus the note
-// context could exceed a small model's window, so trim oldest by total chars.
-// ~48k chars ≈ 12k tokens of history, leaving room for the note context.
+// …size-capped: even within the count cap, a few very long turns plus the note context could exceed a small model's window, so trim oldest by total chars. ~48k chars ≈ 12k tokens of history, leaving room for the note context.
 const MAX_HISTORY_CHARS = 48_000
 
 class ModelSuggestModal extends FuzzySuggestModal<GatewayModel> {
@@ -97,10 +82,7 @@ export class ChatView extends ItemView {
   private models: GatewayModel[] = []
   private model = ''
 
-  // Owns the markdown renderers of the current message list. Replaced (and
-  // the old one unloaded) on every rebuild — passing `this` to
-  // MarkdownRenderer.render instead would accumulate child components for
-  // every discarded render until the view closes.
+  // Owns the markdown renderers of the current message list. Replaced (and the old one unloaded) on every rebuild — passing `this` to MarkdownRenderer.render instead would accumulate child components for every discarded render until the view closes.
   private mdComp: Component | null = null
 
   private bodyEl: HTMLElement | null = null
@@ -138,8 +120,7 @@ export class ChatView extends ItemView {
     this.mdComp = null
   }
 
-  // Full rebuild. Called on open, on connect/disconnect, and after settings
-  // changes — not during streaming (streaming patches the last bubble only).
+  // Full rebuild. Called on open, on connect/disconnect, and after settings changes — not during streaming (streaming patches the last bubble only).
   render(): void {
     const root = this.contentEl
     root.empty()
@@ -211,8 +192,7 @@ export class ChatView extends ItemView {
   private renderMessages(): void {
     const body = this.bodyEl
     if (!body) return
-    // Follow the bottom only if the user is already there; a rebuild while
-    // they're scrolled up reading must not yank them away.
+    // Follow the bottom only if the user is already there; a rebuild while they're scrolled up reading must not yank them away.
     const stick = this.isNearBottom()
     const prevTop = body.scrollTop
     this.mdComp?.unload()
@@ -252,8 +232,7 @@ export class ChatView extends ItemView {
       }
       const bd = el.createDiv({ cls: 'everyapi-msg-body' })
       if (msg.role === 'assistant' && !(this.busy && isLast)) {
-        // Finished replies get full markdown rendering; the streaming bubble
-        // stays plain text (re-rendering markdown per delta is too heavy).
+        // Finished replies get full markdown rendering; the streaming bubble stays plain text (re-rendering markdown per delta is too heavy).
         void MarkdownRenderer.render(
           this.app,
           msg.text,
@@ -264,8 +243,7 @@ export class ChatView extends ItemView {
       } else {
         bd.setText(msg.text)
         if (this.busy && isLast && msg.role === 'assistant') {
-          // Plain text until the stream finishes — keep newlines visible
-          // (the is-ai rule switches to normal whitespace for markdown).
+          // Plain text until the stream finishes — keep newlines visible (the is-ai rule switches to normal whitespace for markdown).
           bd.addClass('is-streaming')
           // Announce streamed text to screen readers as it arrives.
           bd.setAttribute('aria-live', 'polite')
@@ -292,8 +270,7 @@ export class ChatView extends ItemView {
     else body.scrollTop = prevTop
   }
 
-  // Cheap per-delta update for the streaming bubble; renderMessages() does
-  // the full markdown pass once the stream finishes.
+  // Cheap per-delta update for the streaming bubble; renderMessages() does the full markdown pass once the stream finishes.
   private patchStreamingBubble(): void {
     const body = this.bodyEl
     if (!body) return
@@ -341,8 +318,7 @@ export class ChatView extends ItemView {
 
     const tools = box.createDiv({ cls: 'everyapi-tools' })
     this.contextChipEl = tools.createSpan({ cls: 'everyapi-chip' })
-    // Model chip + send are real buttons so they're keyboard-focusable and
-    // activate on Enter/Space (clickable spans are neither).
+    // Model chip + send are real buttons so they're keyboard-focusable and activate on Enter/Space (clickable spans are neither).
     this.modelChipEl = tools.createEl('button', { cls: 'everyapi-chip is-model' })
     this.modelChipEl.setAttribute('aria-label', t('picker.switchModel'))
     this.modelChipEl.addEventListener('click', () => void this.openModelPicker())
@@ -390,15 +366,13 @@ export class ChatView extends ItemView {
     new ModelSuggestModal(this, this.models, (id) => {
       this.model = id
       this.updateModelChip()
-      // Mirror the prototype's shared-default semantics: picking a model
-      // here becomes the default for new chats too.
+      // Mirror the prototype's shared-default semantics: picking a model here becomes the default for new chats too.
       this.plugin.settings.defaultModel = id
       void this.plugin.saveSettings()
     }).open()
   }
 
-  // Called when the API key or base URL changes: the cached model list (and
-  // the session model resolved from it) may belong to the old gateway.
+  // Called when the API key or base URL changes: the cached model list (and the session model resolved from it) may belong to the old gateway.
   invalidateModels(): void {
     this.models = []
     this.model = this.plugin.settings.defaultModel
@@ -458,19 +432,13 @@ export class ChatView extends ItemView {
       const aiMsg: ChatMessage = { role: 'assistant', text: '', model: this.model }
       this.messages.push(aiMsg)
       this.renderMessages()
-      // Sending is an explicit action — always show the new exchange, even
-      // if the user had scrolled up beforehand.
+      // Sending is an explicit action — always show the new exchange, even if the user had scrolled up beforehand.
       this.scrollToBottom()
 
       this.abortCtl = new AbortController()
       let usage: ChatUsage | undefined
 
-      // Build a CUMULATIVE transcript so the user sees the whole process — the
-      // model's interim narration and each note tool it runs — not just the
-      // final turn. `committed` holds finished narration + tool-step lines;
-      // `live` is the turn currently streaming. The bubble shows committed+live
-      // so it grows rather than being overwritten on each round trip (mirrors
-      // the VS Code chatView transcript).
+      // Build a CUMULATIVE transcript so the user sees the whole process — the model's interim narration and each note tool it runs — not just the final turn. `committed` holds finished narration + tool-step lines; `live` is the turn currently streaming. The bubble shows committed+live so it grows rather than being overwritten on each round trip (mirrors the VS Code chatView transcript).
       let committed = ''
       let live = ''
       const flushLive = (): void => {
@@ -482,9 +450,7 @@ export class ChatView extends ItemView {
         this.patchStreamingBubble()
       }
 
-      // The chat is always agentic: the vault is always available, so the model
-      // reads/searches/edits notes itself via tools instead of us pre-stuffing
-      // the active note into the prompt.
+      // The chat is always agentic: the vault is always available, so the model reads/searches/edits notes itself via tools instead of us pre-stuffing the active note into the prompt.
       const executors = new VaultExecutors(this.app, new ObsidianApprovalGate(this.app))
       try {
         const result = await runAgentLoop({
@@ -508,8 +474,7 @@ export class ChatView extends ItemView {
           executors,
           signal: this.abortCtl.signal,
           onTurnStart: () => {
-            // A new round trip begins: commit the prior turn's narration so the
-            // new turn's deltas don't overwrite it.
+            // A new round trip begins: commit the prior turn's narration so the new turn's deltas don't overwrite it.
             flushLive()
           },
           onTextDelta: (chunk) => {
@@ -518,8 +483,7 @@ export class ChatView extends ItemView {
           },
           onToolEvent: (e) => {
             if (e.status === 'running') {
-              // Commit any narration that preceded this call, then show the
-              // tool call as a muted blockquote line in the bubble.
+              // Commit any narration that preceded this call, then show the tool call as a muted blockquote line in the bubble.
               flushLive()
               committed += `> \`${e.name}\` ${compactArgs(e.args)}`
               render()
@@ -542,8 +506,7 @@ export class ChatView extends ItemView {
         // Commit the final turn's text (it streamed into `live`).
         flushLive()
         aiMsg.text = committed.trimEnd() || result.text
-        // The bubble keeps the full transcript, but insert/append/copy use the
-        // clean final answer so the user's note doesn't get the tool-step log.
+        // The bubble keeps the full transcript, but insert/append/copy use the clean final answer so the user's note doesn't get the tool-step log.
         aiMsg.answer = result.text
         if (result.truncated) {
           const note = t('chat.truncated', { iterations: result.iterations })
@@ -559,8 +522,7 @@ export class ChatView extends ItemView {
             error: e instanceof Error ? e.message : String(e),
           })
         } else if (aiMsg.text === '') {
-          // Aborted before anything streamed — drop the empty assistant bubble
-          // instead of rendering a model header with no body.
+          // Aborted before anything streamed — drop the empty assistant bubble instead of rendering a model header with no body.
           const idx = this.messages.indexOf(aiMsg)
           if (idx !== -1) this.messages.splice(idx, 1)
         }
@@ -576,8 +538,7 @@ export class ChatView extends ItemView {
         text: '',
         error: t('chat.requestFailed', { error: e instanceof Error ? e.message : String(e) }),
       })
-      // Nothing was sent (model resolution / note read failed before the
-      // request) — give the user their question back so they can retry.
+      // Nothing was sent (model resolution / note read failed before the request) — give the user their question back so they can retry.
       this.draft = text
       if (this.inputEl) this.inputEl.value = text
     } finally {
@@ -590,11 +551,7 @@ export class ChatView extends ItemView {
     }
   }
 
-  // A compact vault snapshot for the first agent turn (Roo's environment_details):
-  // the note the user is viewing and a shallow file tree — so the agent orients
-  // without spending an opening list_dir round trip. It reads the actual note
-  // content itself via read_file, so we don't inline it here. Best-effort: any
-  // failure yields '' and the agent just explores via tools.
+  // A compact vault snapshot for the first agent turn (Roo's environment_details): the note the user is viewing and a shallow file tree — so the agent orients without spending an opening list_dir round trip. It reads the actual note content itself via read_file, so we don't inline it here. Best-effort: any failure yields '' and the agent just explores via tools.
   private async buildEnvDigest(): Promise<string> {
     try {
       const lines: string[] = []
@@ -618,8 +575,7 @@ export class ChatView extends ItemView {
 
   // ---------------- programmatic send (editor commands) ----------------
 
-  // Entry point for the command-palette editor actions (Explain selection,
-  // Improve writing, …): inject a prompt and send it through the normal path.
+  // Entry point for the command-palette editor actions (Explain selection, Improve writing, …): inject a prompt and send it through the normal path.
   submitPrompt(prompt: string): void {
     const p = prompt.trim()
     if (!p) return
@@ -636,9 +592,7 @@ export class ChatView extends ItemView {
     return this.app.workspace.getActiveViewOfType(MarkdownView)?.editor ?? null
   }
 
-  // Insert at the cursor of the active editor, replacing the selection if
-  // there is one. The richest interaction, but only available when a note is
-  // open in edit mode — falls back to a Notice otherwise.
+  // Insert at the cursor of the active editor, replacing the selection if there is one. The richest interaction, but only available when a note is open in edit mode — falls back to a Notice otherwise.
   private insertAtCursor(msg: ChatMessage): void {
     const editor = this.activeEditor()
     if (!editor) {
@@ -651,8 +605,7 @@ export class ChatView extends ItemView {
     new Notice(t('notice.inserted'))
   }
 
-  // Sidebar fallback: append the reply as a blockquote at the end of the
-  // active note — predictable, works without an open editor cursor.
+  // Sidebar fallback: append the reply as a blockquote at the end of the active note — predictable, works without an open editor cursor.
   private async appendAsQuote(msg: ChatMessage): Promise<void> {
     const file = this.app.workspace.getActiveFile()
     if (!file || file.extension !== 'md') {
