@@ -3,7 +3,7 @@
 /** Public default gateway. The OpenAI-compatible surface lives under `/v1`. */
 export const DEFAULT_BASE_URL = 'https://api.everyapi.ai/v1'
 
-// Quotas are in the gateway's internal unit; default QuotaPerUnit = 500_000 (= $1) per backend/internal/common/constants.go. Self-hosted operators can retune this — pass the deployment's real peg (fetchQuotaPerUsd in account.ts, sourced from /api/status) to fmtUsd so $ figures stay correct; this constant is the fallback when the live value is unknown.
+// Quotas are in the gateway's internal unit; default QuotaPerUnit = 500_000 (= $1) per backend/internal/platform/appcore/constants.go. Self-hosted operators can retune this — pass the deployment's real peg (fetchQuotaPerUsd in account.ts, sourced from /api/status) to fmtUsd so $ figures stay correct; this constant is the fallback when the live value is unknown.
 export const QUOTA_PER_USD = 500_000
 
 /** Trim trailing slashes so we never request `.../v1//models`. */
