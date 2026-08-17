@@ -3,6 +3,7 @@
 export * from './url'
 export * from './http'
 export * from './models'
+export * from './chat-eligibility'
 export * from './chat'
 export * from './embeddings'
 export * from './account'

@@ -11,6 +11,21 @@ export function normalizeBaseUrl(raw: string | undefined): string {
   return (raw || DEFAULT_BASE_URL).replace(/\/+$/, '')
 }
 
+/**
+ * True when `baseUrl` points at the public EveryAPI deployment — the one whose published quota peg IS {@link QUOTA_PER_USD}.
+ *
+ * This is the discriminator that keeps "we had to assume the peg" from becoming noise: on the public host the constant is the documented, correct value, so falling back to it is not a degradation and nothing should be flagged. On any other host the operator may have retuned QuotaPerUnit, and the same fallback silently multiplies every derived USD figure by an unknown factor. See {@link fetchStatus}'s `quotaPerUnitSource`.
+ *
+ * Compared by host, so `https://api.everyapi.ai/v1`, `https://api.everyapi.ai` and a trailing-slash variant are all the same deployment. An unparseable base URL answers `false` — the conservative direction: we would rather flag a peg that turns out to be right than hide one that is wrong.
+ */
+export function isDefaultDeployment(baseUrl: string | undefined): boolean {
+  try {
+    return new URL(normalizeBaseUrl(baseUrl)).host === new URL(DEFAULT_BASE_URL).host
+  } catch {
+    return false
+  }
+}
+
 // Account-scoped endpoints (logs, token usage) live under `/api`, not the OpenAI-compatible `/v1`. Derive the admin base by stripping a trailing `/v1` and appending `/api`, so a caller who only set `baseUrl` (or left the default) still hits the right host.
 export function adminApiBase(baseUrl: string): string {
   return baseUrl.replace(/\/v1$/, '') + '/api'

@@ -2,9 +2,10 @@
 
 import {
   authHeaders,
+  describeErrorResponse,
+  GatewayHttpError,
   redactSecrets,
   resolveSignal,
-  safeReadText,
   type RequestOptions,
 } from './http'
 
@@ -113,9 +114,16 @@ export async function streamChat(input: StreamChatInput): Promise<void> {
   })
 
   if (!res.ok) {
-    const detail = res.body ? redactSecrets(await safeReadText(res.body), input.apiKey) : ''
-    throw new Error(
-      `HTTP ${res.status} ${res.statusText}${detail ? ` — ${detail.slice(0, 200)}` : ''}`
+    // Same message text as ever, but thrown with the status attached: a caller rendering this to a
+    // person needs to know whether the gateway refused the request (401/402/429) or never answered.
+    const { detail, apiMessage, apiCode, requestId } = await describeErrorResponse(
+      res,
+      input.apiKey
+    )
+    throw new GatewayHttpError(
+      `HTTP ${res.status} ${res.statusText}${detail ? ` — ${detail.slice(0, 200)}` : ''}`,
+      res.status,
+      { apiMessage, apiCode, requestId }
     )
   }
 
@@ -320,9 +328,16 @@ export async function completeChat(input: CompleteChatInput): Promise<ChatResult
   })
 
   if (!res.ok) {
-    const detail = res.body ? redactSecrets(await safeReadText(res.body), input.apiKey) : ''
-    throw new Error(
-      `HTTP ${res.status} ${res.statusText}${detail ? ` — ${detail.slice(0, 200)}` : ''}`
+    // Same message text as ever, but thrown with the status attached: a caller rendering this to a
+    // person needs to know whether the gateway refused the request (401/402/429) or never answered.
+    const { detail, apiMessage, apiCode, requestId } = await describeErrorResponse(
+      res,
+      input.apiKey
+    )
+    throw new GatewayHttpError(
+      `HTTP ${res.status} ${res.statusText}${detail ? ` — ${detail.slice(0, 200)}` : ''}`,
+      res.status,
+      { apiMessage, apiCode, requestId }
     )
   }
 

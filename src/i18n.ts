@@ -59,6 +59,10 @@ const english = {
   'chat.noNoteOpen': 'no note open',
   'chat.modelPlaceholder': 'model…',
   'notice.modelsLoadFailed': "EveryAPI: couldn't load models — {error}",
+  'models.noneAvailable':
+    'This key sees no models on this gateway at all. Check the API key and gateway base URL, or enable models for the key in the EveryAPI dashboard.',
+  'models.noChatCapable':
+    'This key’s catalog only exposes image, video, audio or embedding models. Chat needs a model that outputs text.',
   'tool.ok': 'completed',
   'tool.failed': 'failed',
   'tool.denied': 'denied',
@@ -141,6 +145,10 @@ const zhCN: TranslationCatalog = {
   'chat.noNoteOpen': '未打开笔记',
   'chat.modelPlaceholder': '模型…',
   'notice.modelsLoadFailed': 'EveryAPI：无法加载模型——{error}',
+  'models.noneAvailable':
+    '该密钥在此网关上看不到任何模型。请检查 API 密钥与网关地址，或在 EveryAPI 控制台为该密钥启用模型。',
+  'models.noChatCapable':
+    '该密钥的目录只暴露了图像、视频、音频或向量模型。聊天需要能输出文本的模型。',
   'tool.ok': '已完成',
   'tool.failed': '失败',
   'tool.denied': '已拒绝',
@@ -220,6 +228,10 @@ const japanese: TranslationCatalog = {
   'chat.noNoteOpen': 'ノートが開かれていません',
   'chat.modelPlaceholder': 'モデル…',
   'notice.modelsLoadFailed': 'EveryAPI：モデルを読み込めませんでした — {error}',
+  'models.noneAvailable':
+    'このキーはこのゲートウェイでモデルを 1 つも参照できません。API キーとゲートウェイ URL を確認するか、EveryAPI ダッシュボードでこのキーにモデルを有効化してください。',
+  'models.noChatCapable':
+    'このキーのカタログには画像・動画・音声・埋め込みモデルしかありません。チャットにはテキストを出力するモデルが必要です。',
   'tool.ok': '完了',
   'tool.failed': '失敗',
   'tool.denied': '拒否',
@@ -302,6 +314,10 @@ const korean: TranslationCatalog = {
   'chat.noNoteOpen': '열린 노트 없음',
   'chat.modelPlaceholder': '모델…',
   'notice.modelsLoadFailed': 'EveryAPI: 모델을 불러올 수 없습니다 — {error}',
+  'models.noneAvailable':
+    '이 키는 이 게이트웨이에서 어떤 모델도 볼 수 없습니다. API 키와 게이트웨이 주소를 확인하거나 EveryAPI 대시보드에서 이 키에 모델을 활성화하세요.',
+  'models.noChatCapable':
+    '이 키의 카탈로그에는 이미지, 동영상, 오디오 또는 임베딩 모델만 있습니다. 채팅에는 텍스트를 출력하는 모델이 필요합니다.',
   'tool.ok': '완료됨',
   'tool.failed': '실패',
   'tool.denied': '거부됨',
@@ -384,6 +400,10 @@ const spanish: TranslationCatalog = {
   'chat.noNoteOpen': 'ninguna nota abierta',
   'chat.modelPlaceholder': 'modelo…',
   'notice.modelsLoadFailed': 'EveryAPI: no se pudieron cargar los modelos — {error}',
+  'models.noneAvailable':
+    'Esta clave no ve ningún modelo en esta pasarela. Revisa la clave de API y la URL de la pasarela, o habilita modelos para la clave en el panel de EveryAPI.',
+  'models.noChatCapable':
+    'El catálogo de esta clave solo expone modelos de imagen, vídeo, audio o embeddings. El chat necesita un modelo que genere texto.',
   'tool.ok': 'completado',
   'tool.failed': 'falló',
   'tool.denied': 'denegado',
@@ -469,6 +489,10 @@ const french: TranslationCatalog = {
   'chat.noNoteOpen': 'aucune note ouverte',
   'chat.modelPlaceholder': 'modèle…',
   'notice.modelsLoadFailed': 'EveryAPI : impossible de charger les modèles — {error}',
+  'models.noneAvailable':
+    'Cette clé ne voit aucun modèle sur cette passerelle. Vérifiez la clé d’API et l’URL de la passerelle, ou activez des modèles pour cette clé dans le tableau de bord EveryAPI.',
+  'models.noChatCapable':
+    'Le catalogue de cette clé n’expose que des modèles d’image, de vidéo, d’audio ou d’embedding. Le chat nécessite un modèle qui produit du texte.',
   'tool.ok': 'terminé',
   'tool.failed': 'échoué',
   'tool.denied': 'refusé',

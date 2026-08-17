@@ -23,6 +23,7 @@ import { CLIENT_APP } from './constants'
 import { formatTokens, toBlockquote, trimHistoryByChars } from './format'
 import { t } from './i18n'
 import type EveryApiPlugin from './main'
+import { resolveChatModels } from './models'
 
 export const VIEW_TYPE_EVERYAPI = 'everyapi-chat'
 
@@ -51,6 +52,8 @@ const ENV_IGNORED_DIRS = new Set(['.git', '.obsidian', '.trash', 'node_modules']
 const MAX_HISTORY = 24
 // …size-capped: even within the count cap, a few very long turns plus the note context could exceed a small model's window, so trim oldest by total chars. ~48k chars ≈ 12k tokens of history, leaving room for the note context.
 const MAX_HISTORY_CHARS = 48_000
+
+class ModelCatalogEmptyError extends Error {}
 
 class ModelSuggestModal extends FuzzySuggestModal<GatewayModel> {
   constructor(
@@ -159,19 +162,33 @@ export class ChatView extends ItemView {
       btn.setText(t('onboarding.validating'))
       btn.toggleAttribute('disabled', true)
       try {
-        // The real validation: a key that can list models can chat.
-        this.models = await fetchModels({
+        // Listing models proves the key reaches the gateway; it does not prove this CHAT surface can
+        // use anything the key sees. Keep the two empty states honest before accepting the key.
+        const catalog = await fetchModels({
           baseUrl: this.plugin.settings.baseUrl,
           apiKey: key,
           clientApp: CLIENT_APP,
         })
+        const resolved = resolveChatModels(catalog)
+        if (resolved.kind === 'empty') {
+          throw new ModelCatalogEmptyError(
+            t(
+              resolved.reason === 'no-chat-models' ? 'models.noChatCapable' : 'models.noneAvailable'
+            )
+          )
+        }
+        this.models = resolved.models
         this.plugin.settings.apiKey = key
         await this.plugin.saveSettings()
         this.render()
         void this.plugin.refreshStatusBar(true)
       } catch (e) {
         errEl.setText(
-          t('onboarding.connectionFailed', { error: e instanceof Error ? e.message : String(e) })
+          e instanceof ModelCatalogEmptyError
+            ? e.message
+            : t('onboarding.connectionFailed', {
+                error: e instanceof Error ? e.message : String(e),
+              })
         )
         btn.setText(t('onboarding.connect'))
         btn.toggleAttribute('disabled', false)
@@ -359,7 +376,9 @@ export class ChatView extends ItemView {
       await this.ensureModels()
     } catch (e) {
       new Notice(
-        t('notice.modelsLoadFailed', { error: e instanceof Error ? e.message : String(e) })
+        e instanceof ModelCatalogEmptyError
+          ? e.message
+          : t('notice.modelsLoadFailed', { error: e instanceof Error ? e.message : String(e) })
       )
       return
     }
@@ -382,14 +401,26 @@ export class ChatView extends ItemView {
   private async ensureModels(): Promise<void> {
     if (this.models.length === 0) {
       const s = this.plugin.settings
-      this.models = await fetchModels({
+      const catalog = await fetchModels({
         baseUrl: s.baseUrl,
         apiKey: s.apiKey,
         clientApp: CLIENT_APP,
       })
+      const resolved = resolveChatModels(catalog)
+      if (resolved.kind === 'empty') {
+        throw new ModelCatalogEmptyError(
+          t(resolved.reason === 'no-chat-models' ? 'models.noChatCapable' : 'models.noneAvailable')
+        )
+      }
+      this.models = resolved.models
     }
-    if (!this.model) {
+    if (!this.model || !this.models.some((candidate) => candidate.id === this.model)) {
       this.model = this.plugin.settings.defaultModel || this.models[0]?.id || ''
+      // A previously saved generator must not stay selected after the catalog was filtered. Prefer
+      // the first eligible model; settings still shows the saved id separately for manual repair.
+      if (!this.models.some((candidate) => candidate.id === this.model)) {
+        this.model = this.models[0]?.id || ''
+      }
       this.updateModelChip()
     }
   }

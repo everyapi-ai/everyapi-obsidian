@@ -4,6 +4,7 @@ import { App, PluginSettingTab, Setting, debounce } from 'obsidian'
 import { CLIENT_APP } from './constants'
 import { t } from './i18n'
 import type EveryApiPlugin from './main'
+import { resolveChatModels, type ChatModelsEmptyReason } from './models'
 
 export interface EveryApiSettings {
   apiKey: string
@@ -75,11 +76,21 @@ export class EveryApiSettingTab extends PluginSettingTab {
       .setDesc(t('settings.defaultModelDescription'))
 
     let models: GatewayModel[] = []
+    let catalog: GatewayModel[] | null = null
+    let emptyReason: ChatModelsEmptyReason | null = null
     if (s.apiKey) {
       try {
-        models = await fetchModels({ baseUrl: s.baseUrl, apiKey: s.apiKey, clientApp: CLIENT_APP })
+        catalog = await fetchModels({
+          baseUrl: s.baseUrl,
+          apiKey: s.apiKey,
+          clientApp: CLIENT_APP,
+        })
+        const resolved = resolveChatModels(catalog)
+        if (resolved.kind === 'ready') models = resolved.models
+        else emptyReason = resolved.reason
       } catch {
-        // Couldn't reach the gateway — fall through to the free-text field.
+        // Couldn't reach the gateway — fall through to the free-text field. Its existing text-field
+        // fallback deliberately preserves self-hosted gateways that do not expose `/v1/models`.
       }
     }
 
@@ -87,16 +98,20 @@ export class EveryApiSettingTab extends PluginSettingTab {
       setting.addDropdown((dd) => {
         dd.addOption('', t('settings.firstGatewayModel'))
         for (const m of models) dd.addOption(m.id, m.id)
-        // A previously-saved model that's no longer listed should still show.
-        if (s.defaultModel && !models.some((m) => m.id === s.defaultModel)) {
-          dd.addOption(s.defaultModel, t('settings.savedModel', { model: s.defaultModel }))
-        }
-        dd.setValue(s.defaultModel)
+        // Keep a previously saved non-chat id in storage for manual recovery, but never add it back to
+        // the dropdown: doing so would turn the filtered empty state into a fail-open picker.
+        dd.setValue(models.some((m) => m.id === s.defaultModel) ? s.defaultModel : '')
         dd.onChange(async (value) => {
           s.defaultModel = value
           await this.plugin.saveSettings()
         })
       })
+    } else if (emptyReason) {
+      // A successfully-read but unusable catalog is an honest empty state, not an invitation to
+      // type one of those same unusable ids back in. Keep free text only for "catalog unavailable".
+      setting.setDesc(
+        t(emptyReason === 'no-chat-models' ? 'models.noChatCapable' : 'models.noneAvailable')
+      )
     } else {
       setting.addText((text) =>
         text

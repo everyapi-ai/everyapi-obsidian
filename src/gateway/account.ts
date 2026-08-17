@@ -1,7 +1,7 @@
 // Account-scoped reads under `/api`: wallet/balance, the usage log, and a client-side rollup of that log. All authenticated with the same `sk-everyapi-` bearer token (TokenAuthReadOnly on the backend).
 
 import { getJson, redactSecrets, type RequestOptions } from './http'
-import { adminApiBase, QUOTA_PER_USD } from './url'
+import { adminApiBase, isDefaultDeployment, QUOTA_PER_USD } from './url'
 
 export interface WalletData {
   name: string
@@ -53,16 +53,31 @@ export async function fetchWallet(opts: RequestOptions): Promise<WalletData> {
   return body.data
 }
 
-/** GET `{admin}/log/token` — recent usage rows (≤1000 server-side). */
+/**
+ * GET `{admin}/log/token` — recent usage rows (≤1000 server-side).
+ *
+ * Rejects when `data` is not an array, because on this endpoint a non-array payload is never the empty case. Two independent legs close it: the handler emits a `data` field only *after* a successful query — a query error answers `success: false` with the error text, so "the read failed" can never arrive wearing a `data: null` — and the successful path answers with GORM's `Find(&logs)` into a nil-valued named return, whose scanner allocates before it reads any row (`scan.go` sets `reflect.MakeSlice(type, 0, 20)` whenever the destination slice's `Cap()` is 0; identical in v1.21.15 and v1.25.2). A key with zero calls therefore serializes as `data: []`, not `data: null`. Anything else (`null`, `{}`, `""`, `0`, missing) is a degraded response — a proxy body, an error page, an older or modified handler — and folding it into `[]` renders "$0.00 · 0 requests this week", pixel-identical to a genuinely idle week and invisible to every caller.
+ *
+ * ⚠ Provenance, so nobody over-trusts the paragraph above: that handler was read in the UPSTREAM open-source backend, not in EveryAPI's own fork, which is not available here. It is corroborated by live behaviour on the public gateway (a 1000-row cap matching the upstream `MaxRecentItems`, and four distinct query parameters ignored — matching a handler that reads none) and by this repo's backend notes, but the fork could still diverge on this line, and the ClickHouse log-store branch was not verifiable at all. The bet is deliberate rather than certain: if it is wrong, a zero-call key sees a loud "usage unavailable" instead of "$0.00" — visible and reportable, rather than the silent wrong number this replaces.
+ *
+ * ⚠ The opposite is true of {@link fetchPricing} — see the note there before "symmetrizing" the two.
+ */
 export async function fetchLogs(opts: RequestOptions): Promise<LogRow[]> {
   const url = `${adminApiBase(opts.baseUrl)}/log/token`
   const body = await getJson<Envelope<LogRow[]>>(url, opts)
   const err = envelopeError(body, opts.apiKey)
   if (err) throw new Error(err)
-  return Array.isArray(body.data) ? body.data : []
+  if (!Array.isArray(body.data))
+    throw new Error(
+      redactSecrets(
+        body.message || 'gateway returned a usage log payload that is not a list of rows',
+        opts.apiKey
+      )
+    )
+  return body.data
 }
 
-/** GET `{admin}/status` — the deployment's quota→USD peg (`quota_per_unit`). Self-hosted operators can retune it; the public/default deployment returns {@link QUOTA_PER_USD}. Falls back to that default when the field is absent/non-positive or the request fails, so a caller can always format with the result. Pass it to {@link fmtUsd} (and any `quota / peg` math) instead of the hardcoded constant. The endpoint is public, but we still send auth since every other admin read does. */
+/** GET `{admin}/status` — the deployment's quota→USD peg (`quota_per_unit`). Self-hosted operators can retune it; the public/default deployment returns {@link QUOTA_PER_USD}. Falls back to that default when the field is absent/non-positive or the request fails, so a caller can always format with the result. Pass it to {@link fmtUsd} (and any `quota / peg` math) instead of the hardcoded constant. The endpoint is public, but we still send auth since every other admin read does. ⚠ A bare number cannot say whether it is the deployment's peg or the fallback constant — a caller that RENDERS money should use {@link fetchStatus} and check `quotaPerUnitSource` instead. */
 export async function fetchQuotaPerUsd(opts: RequestOptions): Promise<number> {
   try {
     const url = `${adminApiBase(opts.baseUrl)}/status`
@@ -74,9 +89,20 @@ export async function fetchQuotaPerUsd(opts: RequestOptions): Promise<number> {
   }
 }
 
+/**
+ * Where {@link StatusInfo.quotaPerUnit} came from. The peg is the denominator of every USD figure a client renders, so a caller that shows money needs to know whether it is the deployment's own number or one we made up.
+ *
+ * - `deployment` — `/api/status` reported a positive `quota_per_unit`. Authoritative.
+ * - `default` — we fell back to {@link QUOTA_PER_USD} on the public deployment, whose published peg is that constant. Treated as harmless, so no surface warns. ⚠ Known residue: this asserts correctness from the HOST, not from a value anybody read — the backend keeps QuotaPerUnit as a mutable setting, so if the public deployment ever retunes it, `default` launders a wrong divisor more quietly than `assumed` would. Nothing here or in CI pins the constant to the deployment's live peg.
+ * - `assumed` — we fell back to {@link QUOTA_PER_USD} on some other host. A self-hosted operator can retune QuotaPerUnit, so every USD figure derived from this peg may be wrong by that factor. **This is the state a money-rendering surface must make visible.**
+ */
+export type QuotaPegSource = 'deployment' | 'default' | 'assumed'
+
 export interface StatusInfo {
   /** quota→USD peg; falls back to {@link QUOTA_PER_USD}. */
   quotaPerUnit: number
+  /** Whether {@link quotaPerUnit} is the deployment's own number or a fallback — see {@link QuotaPegSource}. */
+  quotaPerUnitSource: QuotaPegSource
   /** Deployment build version ('' when the field is absent). */
   version: string
   /** Process start time, unix seconds (0 when absent) — derive uptime from it. */
@@ -85,8 +111,14 @@ export interface StatusInfo {
   systemName: string
 }
 
-/** GET `{admin}/status` — deployment identity + the quota→USD peg in one read. A richer sibling of {@link fetchQuotaPerUsd} for callers that also want to show which deployment/version a key is hitting (e.g. a status tooltip). The endpoint is public; we send auth like every other admin read. Never throws — every field falls back so a caller can always render. */
+/**
+ * GET `{admin}/status` — deployment identity + the quota→USD peg in one read. A richer sibling of {@link fetchQuotaPerUsd} for callers that also want to show which deployment/version a key is hitting (e.g. a status tooltip). The endpoint is public; we send auth like every other admin read.
+ *
+ * Never throws — every field falls back so a caller can always render. That is deliberate: the peg is a decoration on top of the wallet read, and losing the whole panel because one auxiliary endpoint 5xx'd would be a worse trade. But not throwing used to mean the fallback was *undetectable*: the hardcoded {@link QUOTA_PER_USD} became the divisor of every dollar the client showed with nothing, anywhere, able to tell. {@link StatusInfo.quotaPerUnitSource} is the repair — the failure is still absorbed, but it is no longer erased, and `assumed` names exactly the case where the constant is a guess rather than a documented value.
+ */
 export async function fetchStatus(opts: RequestOptions): Promise<StatusInfo> {
+  // Only reached when the live value is unusable; on the public host the constant IS the published peg, so it is a fallback in provenance only.
+  const fallbackSource: QuotaPegSource = isDefaultDeployment(opts.baseUrl) ? 'default' : 'assumed'
   try {
     const url = `${adminApiBase(opts.baseUrl)}/status`
     const body = await getJson<
@@ -98,17 +130,22 @@ export async function fetchStatus(opts: RequestOptions): Promise<StatusInfo> {
       }>
     >(url, opts)
     const d = body.data ?? {}
+    const live = typeof d.quota_per_unit === 'number' && d.quota_per_unit > 0
     return {
-      quotaPerUnit:
-        typeof d.quota_per_unit === 'number' && d.quota_per_unit > 0
-          ? d.quota_per_unit
-          : QUOTA_PER_USD,
+      quotaPerUnit: live ? d.quota_per_unit! : QUOTA_PER_USD,
+      quotaPerUnitSource: live ? 'deployment' : fallbackSource,
       version: typeof d.version === 'string' ? d.version : '',
       startTime: typeof d.start_time === 'number' && d.start_time > 0 ? d.start_time : 0,
       systemName: typeof d.system_name === 'string' ? d.system_name : '',
     }
   } catch {
-    return { quotaPerUnit: QUOTA_PER_USD, version: '', startTime: 0, systemName: '' }
+    return {
+      quotaPerUnit: QUOTA_PER_USD,
+      quotaPerUnitSource: fallbackSource,
+      version: '',
+      startTime: 0,
+      systemName: '',
+    }
   }
 }
 
@@ -124,7 +161,7 @@ export async function fetchBalanceUsd(
 }
 
 // ---------------------------------------------------------------------------
-// Pricing. /api/pricing returns raw model/completion ratios; EveryAPI's per-1M-token price is the same math as apps/landingpage/scripts/gen-pricing and apps/jetbrains: ratio 1 == $2/1M upstream, EveryAPI charges a flat 15%.
+// Pricing. /api/pricing returns raw model/completion ratios; EveryAPI's per-1M-token price is the same math as apps/jetbrains (Gateway.kt fetchPricing): ratio 1 == $2/1M upstream, EveryAPI charges a flat 15%.
 
 const RATE_BASE_PER_1M = 2
 const EVERYAPI_DISCOUNT = 0.15
@@ -143,7 +180,11 @@ interface PricingRow {
   completion_ratio?: number
 }
 
-/** GET `{admin}/pricing` — public per-model price catalog (USD per 1M tokens). */
+/**
+ * GET `{admin}/pricing` — public per-model price catalog (USD per 1M tokens).
+ *
+ * ⚠ Keeps the "non-array `data` → empty catalog" tolerance that {@link fetchLogs} deliberately dropped. Do NOT symmetrize them: the two endpoints build their payload differently. The pricing handler returns its in-memory catalog slice straight through — including when that slice is nil (its group filter short-circuits `len(pricing) == 0` by returning the argument unchanged, and the catalog cache is reset to nil on invalidation) — so `data: null` here IS a legitimate empty catalog, and rejecting it would turn a cold cache into "pricing unavailable". The log endpoint has no such path: gorm allocates the slice before scanning, so its empty case is always `[]`.
+ */
 export async function fetchPricing(opts: RequestOptions): Promise<ModelPrice[]> {
   const url = `${adminApiBase(opts.baseUrl)}/pricing`
   const body = await getJson<Envelope<PricingRow[]>>(url, opts)
@@ -151,8 +192,8 @@ export async function fetchPricing(opts: RequestOptions): Promise<ModelPrice[]> 
   if (err) throw new Error(err)
   const rows = Array.isArray(body.data) ? body.data : []
   return rows.flatMap((r) => {
-    // Drop unpriced models (ratio <= 0): the backend uses ratio 0 as an "unpriced / not sold" sentinel, and rendering it as a real $0.00 model misleads. Matches apps/landingpage/scripts/gen-pricing.mjs, which skips
-    // ratio <= 0.
+    // Drop unpriced models (ratio <= 0): the backend uses ratio 0 as an "unpriced / not sold" sentinel, and rendering it as a real $0.00 model misleads. apps/landingpage/src/lib/public-pricing.ts drops the same rows for
+    // the same reason.
     if (!r.model_name || typeof r.model_ratio !== 'number' || r.model_ratio <= 0) return []
     const completionRatio = typeof r.completion_ratio === 'number' ? r.completion_ratio : 1
     return [
