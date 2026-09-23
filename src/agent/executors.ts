@@ -1,17 +1,19 @@
 // Per-host executors for the EveryAPI agentic NOTES tool set, implemented against the Obsidian Vault API and confined to the vault. The gateway only translates tool schemas; it does NOT gate execution — so every safety guard is enforced HERE, before any tool runs:
 //
 //   1. Path confinement: every path is run through the pure lexical guard (paths.ts) and rejected if it escapes the vault ('..', absolute). The Vault API is already vault-scoped; this adds clean errors + defense.
-//   2. Approval before mutating: write_file / apply_diff block on an explicit
-//      per-call user confirmation (Obsidian modal); reject => `denied` result.
+//   2. Approval before mutating: write_file / apply_diff block on an explicit per-call user confirmation (Obsidian modal); reject => `denied` result.
 //   3. Output caps: read/list/search output is size-bounded.
 //   4. Untrusted data: tool output is never treated as instructions; we never auto-escalate approval based on what a note said.
 //   5. Secrets: obvious credential-looking files are skipped on read/search (a vault has no shell secrets, but a synced repo might).
 //   6. Regex safety: search_text patterns are screened by a pure heuristic (regex-safety.ts) for the classic catastrophic-backtracking shape before compiling — Electron's renderer is single-threaded and a pathological RegExp.test() call cannot be interrupted or timed out.
+//   7. Cancellation: every executor takes the turn's AbortSignal. A vault-wide search checks it per file, and an open approval modal is closed as a denial, so Stop reaches work already in flight rather than only the gap between tool calls.
+//   8. Undo: every mutating call records the note's pre-edit content in a per-turn journal BEFORE writing, so the panel can offer one-click "Revert this turn" (revertVaultEdits below). Approval remains the primary safety net; the journal is the second one.
 //
-// Every executor returns a structured result envelope and NEVER throws into the loop, so the model can self-correct. The pure diff/match logic lives in diff.ts; the line-numbering in format.ts; the regex guard in regex-safety.ts — all unit-tested without Obsidian.
+// Every executor returns a structured result envelope and NEVER throws into the loop — with one deliberate exception: an abort propagates as an AbortError so the turn ends as a cancellation instead of being reported to the model as a tool failure. The pure diff/match logic lives in diff.ts; the line-numbering in format.ts; the regex guard in regex-safety.ts — all unit-tested without Obsidian.
 
 import { App, TFile, TFolder, type Vault } from 'obsidian'
 
+import { isAbortError, throwIfAborted } from './abort'
 import type { ApprovalGate } from './approval'
 import {
   type ToolResult,
@@ -43,8 +45,16 @@ const IGNORED_DIRS = new Set(['.git', '.obsidian', '.trash', 'node_modules', '.D
 const SECRET_FILE_RE =
   /(^|\/)(\.env(\.[\w-]+)?|\.npmrc|\.netrc|id_rsa|id_ed25519|.*\.pem|.*\.key|.*\.p12|.*\.pfx|.*\.keystore)$/i
 
+/** One vault mutation this turn applied, captured BEFORE the write. `before` is null when the note did not exist, i.e. the turn created it. */
+export interface VaultEdit {
+  path: string
+  before: string | null
+}
+
 export class VaultExecutors {
   private readonly vault: Vault
+  // First touch wins, so reverting restores the state the turn started from rather than an intermediate one when the model edits the same note twice. Insertion-ordered, which is also the order the writes happened.
+  private readonly journal = new Map<string, VaultEdit>()
 
   constructor(
     app: App,
@@ -53,8 +63,23 @@ export class VaultExecutors {
     this.vault = app.vault
   }
 
-  /** Dispatch a parsed tool call to its executor. Always resolves to a ToolResult — never throws — so a guard rejection becomes model-visible feedback rather than a crashed loop. */
-  async execute(name: ToolName, args: Record<string, unknown>): Promise<ToolResult> {
+  /** The mutations recorded so far, oldest first. The caller (the panel) takes them once a turn ends and offers a revert; the executors keep no history beyond this. */
+  takeJournal(): VaultEdit[] {
+    const edits = [...this.journal.values()]
+    this.journal.clear()
+    return edits
+  }
+
+  private record(path: string, before: string | null): void {
+    if (!this.journal.has(path)) this.journal.set(path, { path, before })
+  }
+
+  /** Dispatch a parsed tool call to its executor. Resolves to a ToolResult — a guard rejection becomes model-visible feedback rather than a crashed loop. The one thing that DOES throw is an abort: the user pressing Stop must end the turn, not be reported to the model as a tool failure it should retry. */
+  async execute(
+    name: ToolName,
+    args: Record<string, unknown>,
+    signal?: AbortSignal
+  ): Promise<ToolResult> {
     try {
       switch (name) {
         case 'read_file':
@@ -62,13 +87,24 @@ export class VaultExecutors {
         case 'list_dir':
           return this.listDir(str(args.path), bool(args.recursive))
         case 'search_text':
-          return await this.searchText(str(args.pattern), str(args.path), str(args.file_glob))
+          return await this.searchText(
+            str(args.pattern),
+            str(args.path),
+            str(args.file_glob),
+            signal
+          )
         case 'write_file':
-          return await this.writeFile(str(args.path), strOrNull(args.content))
+          return await this.writeFile(str(args.path), strOrNull(args.content), signal)
         case 'apply_diff':
-          return await this.applyDiff(str(args.path), str(args.diff))
+          return await this.applyDiff(
+            str(args.path),
+            str(args.diff),
+            bool(args.replace_all),
+            signal
+          )
       }
     } catch (e) {
+      if (isAbortError(e)) throw e
       return err(
         e instanceof Error ? e.message : String(e),
         'Unexpected failure; adjust the arguments and retry.'
@@ -167,7 +203,12 @@ export class VaultExecutors {
 
   // ---- search_text ----------------------------------------------------------
 
-  private async searchText(pattern: string, path: string, glob?: string): Promise<ToolResult> {
+  private async searchText(
+    pattern: string,
+    path: string,
+    glob?: string,
+    signal?: AbortSignal
+  ): Promise<ToolResult> {
     if (!pattern) return err("'pattern' is required.")
     const unsafeReason = unsafeSearchPatternReason(pattern)
     if (unsafeReason) {
@@ -210,6 +251,8 @@ export class VaultExecutors {
     let truncated = false
 
     outer: for (const file of candidates) {
+      // A vault-wide scan is the longest-running tool here (thousands of cachedRead calls), so Stop has to be observable inside the loop — checking only between tool calls leaves the user waiting out a scan they already cancelled.
+      throwIfAborted(signal)
       if (file.stat.size > READ_MAX_BYTES) continue
       let text: string
       try {
@@ -250,7 +293,11 @@ export class VaultExecutors {
 
   // ---- write_file -----------------------------------------------------------
 
-  private async writeFile(path: string, content: string | null): Promise<ToolResult> {
+  private async writeFile(
+    path: string,
+    content: string | null,
+    signal?: AbortSignal
+  ): Promise<ToolResult> {
     if (!path) return err("'path' is required.")
     if (content === null)
       return err("'content' is required.", 'Send the complete file content as a string.')
@@ -267,9 +314,17 @@ export class VaultExecutors {
     if (file) oldText = await this.vault.read(file)
 
     const preview = isNew ? previewNewFile(content) : unifiedDiff(rel, oldText, content)
-    const approved = await this.approval.confirmWrite(rel, preview.text, isNew, preview.truncated)
+    const approved = await this.approval.confirmWrite(
+      rel,
+      preview.text,
+      isNew,
+      preview.truncated,
+      signal
+    )
     if (!approved) return denied('Propose a different change or explain why this edit is needed.')
 
+    // Record the pre-edit state BEFORE writing: a crash or a mid-write abort must not leave a mutation the panel cannot offer to undo.
+    this.record(rel, isNew ? null : oldText)
     if (file) {
       await this.vault.modify(file, content)
     } else {
@@ -282,7 +337,12 @@ export class VaultExecutors {
 
   // ---- apply_diff -----------------------------------------------------------
 
-  private async applyDiff(path: string, diff: string): Promise<ToolResult> {
+  private async applyDiff(
+    path: string,
+    diff: string,
+    replaceAll?: boolean,
+    signal?: AbortSignal
+  ): Promise<ToolResult> {
     if (!path) return err("'path' is required.")
     if (!diff) return err("'diff' is required.", 'Send one or more SEARCH/REPLACE blocks.')
     const rel = resolveVaultPath(path)
@@ -304,13 +364,14 @@ export class VaultExecutors {
     const crlf = rawOld.includes('\r\n')
     const oldText = crlf ? rawOld.replace(/\r\n/g, '\n') : rawOld
 
-    const applied = applyDiffPure(rel, oldText, diff)
+    const applied = applyDiffPure(rel, oldText, diff, { replaceAll: replaceAll === true })
     if (!applied.ok) return err(applied.error, applied.suggestion)
 
     const preview = unifiedDiff(rel, oldText, applied.text)
-    const approved = await this.approval.confirmDiff(rel, preview.text, preview.truncated)
+    const approved = await this.approval.confirmDiff(rel, preview.text, preview.truncated, signal)
     if (!approved) return denied('Propose a different edit or explain why this change is needed.')
 
+    this.record(rel, rawOld)
     await this.vault.modify(file, crlf ? applied.text.replace(/\n/g, '\r\n') : applied.text)
     // Surface any location-uncertainty diagnostics from locateBlock (e.g. a match that landed far from the requested :start_line: hint) instead of silently dropping them — the model/user should see when a SEARCH block was ambiguous even though the edit still applied.
     const warningNote = applied.warnings?.length ? `\n${applied.warnings.join('\n')}` : ''
@@ -338,6 +399,51 @@ export class VaultExecutors {
       }
     }
   }
+}
+
+// ---- revert ------------------------------------------------------------------
+
+/** Per-path outcome of a revert: what was restored and what could not be. Reported rather than swallowed — a partial revert that claims success is worse than one that names the notes it left alone. */
+export interface RevertOutcome {
+  reverted: string[]
+  failed: string[]
+}
+
+/** Undo a turn's vault mutations, newest first. A note the turn created is moved to the user's configured trash (never hard-deleted, so an accidental revert is itself recoverable); a note it modified is restored to the exact bytes recorded before the first write of the turn, and is re-created if it has since been removed. */
+export async function revertVaultEdits(app: App, edits: VaultEdit[]): Promise<RevertOutcome> {
+  const reverted: string[] = []
+  const failed: string[] = []
+  for (let i = edits.length - 1; i >= 0; i--) {
+    const edit = edits[i]!
+    try {
+      const existing = app.vault.getAbstractFileByPath(edit.path)
+      if (existing instanceof TFolder) {
+        failed.push(edit.path)
+        continue
+      }
+      if (edit.before === null) {
+        if (existing instanceof TFile) await trashVaultFile(app, existing)
+      } else if (existing instanceof TFile) {
+        await app.vault.modify(existing, edit.before)
+      } else {
+        await app.vault.create(edit.path, edit.before)
+      }
+      reverted.push(edit.path)
+    } catch {
+      failed.push(edit.path)
+    }
+  }
+  return { reverted, failed }
+}
+
+async function trashVaultFile(app: App, file: TFile): Promise<void> {
+  // FileManager.trashFile honours the user's trash preference (vault .trash vs OS bin) but only landed in Obsidian 1.6.6, while this plugin's minAppVersion is 1.5.0 — so feature-detect it and fall back to the older Vault.trash rather than hard-deleting on an older host.
+  const manager = app.fileManager as unknown as { trashFile?: (f: TFile) => Promise<void> }
+  if (typeof manager.trashFile === 'function') {
+    await manager.trashFile(file)
+    return
+  }
+  await app.vault.trash(file, true)
 }
 
 // ---- arg coercion / misc ------------------------------------------------------

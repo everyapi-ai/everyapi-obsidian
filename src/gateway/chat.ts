@@ -1,11 +1,12 @@
-// Streaming chat over the OpenAI-compatible `/v1/chat/completions`, with hand-rolled SSE parsing (the openai SDK would add ~200 kB to each bundle for the two endpoints we use). Supports the union of what the surfaces need: text deltas everywhere, tool-call accumulation (VS Code Copilot Chat) and a trailing usage block (the Obsidian panel) opt-in via callback.
+// Streaming chat over the OpenAI-compatible `/v1/chat/completions`, with hand-rolled SSE parsing (the openai SDK would add ~200 kB to each bundle for the two endpoints we use). Supports the union of what the surfaces need: text deltas everywhere, a trailing usage block opt-in via callback, and the full tool-calling shape an agent loop runs on.
+//
+// The agent surfaces (VS Code, Obsidian) drive their multi-turn tool loop through this client. Everything such a loop needs is here: `tools` in the request, `tool_choice` via `modelOptions`, `assistant` turns carrying `tool_calls` and `tool`-role result messages in `messages`, fragment accumulation of streamed tool-call arguments keyed by their `index` slot, and each finished call delivered to `onToolCall` with BOTH the parsed `input` and the byte-exact `arguments` string to echo back. Two hard-won behaviours live here and nowhere else, which is the reason to use this rather than fork it: the final `decoder.decode()` flush (a stream ending mid multi-byte character otherwise loses its closing frame — the last delta and the usage block), and the HTTP-200-with-a-plain-completion-body fallback for a gateway that ignored `stream: true`.
 
 import {
   authHeaders,
-  describeErrorResponse,
-  GatewayHttpError,
   redactSecrets,
   resolveSignal,
+  safeReadText,
   type RequestOptions,
 } from './http'
 
@@ -56,7 +57,10 @@ export interface ChatUsage {
 export interface ToolCall {
   id: string
   name: string
+  /** The call's arguments, JSON-parsed. Falls back to the raw {@link arguments} string when the upstream emitted malformed JSON, so a caller can still show what was attempted. */
   input: unknown
+  /** The arguments EXACTLY as the upstream sent them (the concatenated stream fragments, or the completion body's own string). An agent loop that echoes the call back in an `assistant` turn's `tool_calls` must forward this rather than re-stringifying {@link input}: `JSON.stringify` of a parsed object is not byte-identical to the original, and for a malformed payload it would double-encode the raw text into a JSON string literal. `''` when the upstream sent no arguments at all. */
+  arguments: string
 }
 
 export interface StreamChatInput extends RequestOptions {
@@ -64,7 +68,7 @@ export interface StreamChatInput extends RequestOptions {
   messages: ChatMessage[]
   /** Provider-specific tunables (temperature, top_p, stop, …) spread straight into the request body. Keys EveryAPI doesn't understand are ignored upstream rather than rejected, so this is always safe. `model`, `messages`, `stream` and `stream_options` are reserved by this function and cannot be overridden here — the protocol-critical fields always win. */
   modelOptions?: Record<string, unknown>
-  /** OpenAI function-tool definitions forwarded to the upstream so it can emit tool calls. Omit (or pass empty) for a plain chat request — the `tools` key is then absent from the body, exactly as before. */
+  /** OpenAI function-tool definitions forwarded to the upstream so it can emit tool calls. Omit (or pass empty) for a plain chat request — the `tools` key is then absent from the body, exactly as before. A caller that also wants to steer tool selection passes `tool_choice` through {@link modelOptions} (`'auto'`, `'none'`, or a specific function) — it is not a reserved key, so it reaches the upstream unchanged. */
   tools?: ChatTool[]
   signal: AbortSignal
   onTextDelta: (chunk: string) => void
@@ -114,16 +118,9 @@ export async function streamChat(input: StreamChatInput): Promise<void> {
   })
 
   if (!res.ok) {
-    // Same message text as ever, but thrown with the status attached: a caller rendering this to a
-    // person needs to know whether the gateway refused the request (401/402/429) or never answered.
-    const { detail, apiMessage, apiCode, requestId } = await describeErrorResponse(
-      res,
-      input.apiKey
-    )
-    throw new GatewayHttpError(
-      `HTTP ${res.status} ${res.statusText}${detail ? ` — ${detail.slice(0, 200)}` : ''}`,
-      res.status,
-      { apiMessage, apiCode, requestId }
+    const detail = res.body ? redactSecrets(await safeReadText(res.body), input.apiKey) : ''
+    throw new Error(
+      `HTTP ${res.status} ${res.statusText}${detail ? ` — ${detail.slice(0, 200)}` : ''}`
     )
   }
 
@@ -262,14 +259,15 @@ export async function streamChat(input: StreamChatInput): Promise<void> {
       if (input.onToolCall && Array.isArray(toolCalls)) {
         for (const tc of toolCalls) {
           if (!tc?.id || !tc.function?.name) continue
+          const rawArgs = tc.function.arguments ?? ''
           let args: unknown = {}
           try {
-            args = tc.function.arguments ? JSON.parse(tc.function.arguments) : {}
+            args = rawArgs ? JSON.parse(rawArgs) : {}
           } catch {
             // Upstream emitted malformed arguments — pass the raw attempt through.
-            args = tc.function.arguments
+            args = rawArgs
           }
-          input.onToolCall({ id: tc.id, name: tc.function.name, input: args })
+          input.onToolCall({ id: tc.id, name: tc.function.name, input: args, arguments: rawArgs })
         }
       }
       if (completion?.usage) usage = completion.usage
@@ -277,7 +275,8 @@ export async function streamChat(input: StreamChatInput): Promise<void> {
   }
 
   if (input.onToolCall) {
-    for (const tc of toolCallAcc.values()) {
+    // Emit in `index` order, not delta-arrival order: a caller building the assistant turn's `tool_calls` array replays these positionally, and an upstream that starts slot 1 before slot 0 would otherwise hand back a permuted array.
+    for (const [, tc] of [...toolCallAcc.entries()].sort((a, b) => a[0] - b[0])) {
       if (!tc.id || !tc.name) continue
       let parsed: unknown = {}
       try {
@@ -286,7 +285,7 @@ export async function streamChat(input: StreamChatInput): Promise<void> {
         // Upstream emitted malformed JSON — pass the raw attempt through so the caller can at least see what was tried.
         parsed = tc.argsBuf
       }
-      input.onToolCall({ id: tc.id, name: tc.name, input: parsed })
+      input.onToolCall({ id: tc.id, name: tc.name, input: parsed, arguments: tc.argsBuf })
     }
   }
 
@@ -328,16 +327,9 @@ export async function completeChat(input: CompleteChatInput): Promise<ChatResult
   })
 
   if (!res.ok) {
-    // Same message text as ever, but thrown with the status attached: a caller rendering this to a
-    // person needs to know whether the gateway refused the request (401/402/429) or never answered.
-    const { detail, apiMessage, apiCode, requestId } = await describeErrorResponse(
-      res,
-      input.apiKey
-    )
-    throw new GatewayHttpError(
-      `HTTP ${res.status} ${res.statusText}${detail ? ` — ${detail.slice(0, 200)}` : ''}`,
-      res.status,
-      { apiMessage, apiCode, requestId }
+    const detail = res.body ? redactSecrets(await safeReadText(res.body), input.apiKey) : ''
+    throw new Error(
+      `HTTP ${res.status} ${res.statusText}${detail ? ` — ${detail.slice(0, 200)}` : ''}`
     )
   }
 

@@ -12,6 +12,8 @@ export function formatNumberedLines(
   offset = 1,
   limit = READ_DEFAULT_LINES
 ): ReadFormatResult {
+  // A file with no bytes at all renders as its own line, not as `1<TAB>` over a single empty line — that shape reads to a model as "line 1 exists and is blank", which is a different fact. Pinned by @everyapi-ai/agent-contract's OUTPUT_FORMAT.read_file.emptyFile, which every host must match.
+  if (content === '') return { ok: true, text: `File: ${relPath} (empty)` }
   const lines = content.split(/\r?\n/)
   const start = Math.max(1, Math.floor(offset || 1))
   const take = Math.min(READ_MAX_LINES, Math.max(1, Math.floor(limit || READ_DEFAULT_LINES)))

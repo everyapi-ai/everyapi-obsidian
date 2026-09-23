@@ -1,3 +1,4 @@
+export * from './command-guard'
 export * from './diff'
 export * from './edit'
 export * from './format'

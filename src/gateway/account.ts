@@ -1,7 +1,7 @@
 // Account-scoped reads under `/api`: wallet/balance, the usage log, and a client-side rollup of that log. All authenticated with the same `sk-everyapi-` bearer token (TokenAuthReadOnly on the backend).
 
 import { getJson, redactSecrets, type RequestOptions } from './http'
-import { adminApiBase, isDefaultDeployment, QUOTA_PER_USD } from './url'
+import { adminApiBase, QUOTA_PER_USD } from './url'
 
 export interface WalletData {
   name: string
@@ -53,31 +53,16 @@ export async function fetchWallet(opts: RequestOptions): Promise<WalletData> {
   return body.data
 }
 
-/**
- * GET `{admin}/log/token` — recent usage rows (≤1000 server-side).
- *
- * Rejects when `data` is not an array, because on this endpoint a non-array payload is never the empty case. Two independent legs close it: the handler emits a `data` field only *after* a successful query — a query error answers `success: false` with the error text, so "the read failed" can never arrive wearing a `data: null` — and the successful path answers with GORM's `Find(&logs)` into a nil-valued named return, whose scanner allocates before it reads any row (`scan.go` sets `reflect.MakeSlice(type, 0, 20)` whenever the destination slice's `Cap()` is 0; identical in v1.21.15 and v1.25.2). A key with zero calls therefore serializes as `data: []`, not `data: null`. Anything else (`null`, `{}`, `""`, `0`, missing) is a degraded response — a proxy body, an error page, an older or modified handler — and folding it into `[]` renders "$0.00 · 0 requests this week", pixel-identical to a genuinely idle week and invisible to every caller.
- *
- * ⚠ Provenance, so nobody over-trusts the paragraph above: that handler was read in the UPSTREAM open-source backend, not in EveryAPI's own fork, which is not available here. It is corroborated by live behaviour on the public gateway (a 1000-row cap matching the upstream `MaxRecentItems`, and four distinct query parameters ignored — matching a handler that reads none) and by this repo's backend notes, but the fork could still diverge on this line, and the ClickHouse log-store branch was not verifiable at all. The bet is deliberate rather than certain: if it is wrong, a zero-call key sees a loud "usage unavailable" instead of "$0.00" — visible and reportable, rather than the silent wrong number this replaces.
- *
- * ⚠ The opposite is true of {@link fetchPricing} — see the note there before "symmetrizing" the two.
- */
+/** GET `{admin}/log/token` — recent usage rows (≤1000 server-side). */
 export async function fetchLogs(opts: RequestOptions): Promise<LogRow[]> {
   const url = `${adminApiBase(opts.baseUrl)}/log/token`
   const body = await getJson<Envelope<LogRow[]>>(url, opts)
   const err = envelopeError(body, opts.apiKey)
   if (err) throw new Error(err)
-  if (!Array.isArray(body.data))
-    throw new Error(
-      redactSecrets(
-        body.message || 'gateway returned a usage log payload that is not a list of rows',
-        opts.apiKey
-      )
-    )
-  return body.data
+  return Array.isArray(body.data) ? body.data : []
 }
 
-/** GET `{admin}/status` — the deployment's quota→USD peg (`quota_per_unit`). Self-hosted operators can retune it; the public/default deployment returns {@link QUOTA_PER_USD}. Falls back to that default when the field is absent/non-positive or the request fails, so a caller can always format with the result. Pass it to {@link fmtUsd} (and any `quota / peg` math) instead of the hardcoded constant. The endpoint is public, but we still send auth since every other admin read does. ⚠ A bare number cannot say whether it is the deployment's peg or the fallback constant — a caller that RENDERS money should use {@link fetchStatus} and check `quotaPerUnitSource` instead. */
+/** GET `{admin}/status` — the deployment's quota→USD peg (`quota_per_unit`). Self-hosted operators can retune it; the public/default deployment returns {@link QUOTA_PER_USD}. Falls back to that default when the field is absent/non-positive or the request fails, so a caller can always format with the result. Pass it to {@link fmtUsd} (and any `quota / peg` math) instead of the hardcoded constant. The endpoint is public, but we still send auth since every other admin read does. */
 export async function fetchQuotaPerUsd(opts: RequestOptions): Promise<number> {
   try {
     const url = `${adminApiBase(opts.baseUrl)}/status`
@@ -89,20 +74,9 @@ export async function fetchQuotaPerUsd(opts: RequestOptions): Promise<number> {
   }
 }
 
-/**
- * Where {@link StatusInfo.quotaPerUnit} came from. The peg is the denominator of every USD figure a client renders, so a caller that shows money needs to know whether it is the deployment's own number or one we made up.
- *
- * - `deployment` — `/api/status` reported a positive `quota_per_unit`. Authoritative.
- * - `default` — we fell back to {@link QUOTA_PER_USD} on the public deployment, whose published peg is that constant. Treated as harmless, so no surface warns. ⚠ Known residue: this asserts correctness from the HOST, not from a value anybody read — the backend keeps QuotaPerUnit as a mutable setting, so if the public deployment ever retunes it, `default` launders a wrong divisor more quietly than `assumed` would. Nothing here or in CI pins the constant to the deployment's live peg.
- * - `assumed` — we fell back to {@link QUOTA_PER_USD} on some other host. A self-hosted operator can retune QuotaPerUnit, so every USD figure derived from this peg may be wrong by that factor. **This is the state a money-rendering surface must make visible.**
- */
-export type QuotaPegSource = 'deployment' | 'default' | 'assumed'
-
 export interface StatusInfo {
   /** quota→USD peg; falls back to {@link QUOTA_PER_USD}. */
   quotaPerUnit: number
-  /** Whether {@link quotaPerUnit} is the deployment's own number or a fallback — see {@link QuotaPegSource}. */
-  quotaPerUnitSource: QuotaPegSource
   /** Deployment build version ('' when the field is absent). */
   version: string
   /** Process start time, unix seconds (0 when absent) — derive uptime from it. */
@@ -111,14 +85,8 @@ export interface StatusInfo {
   systemName: string
 }
 
-/**
- * GET `{admin}/status` — deployment identity + the quota→USD peg in one read. A richer sibling of {@link fetchQuotaPerUsd} for callers that also want to show which deployment/version a key is hitting (e.g. a status tooltip). The endpoint is public; we send auth like every other admin read.
- *
- * Never throws — every field falls back so a caller can always render. That is deliberate: the peg is a decoration on top of the wallet read, and losing the whole panel because one auxiliary endpoint 5xx'd would be a worse trade. But not throwing used to mean the fallback was *undetectable*: the hardcoded {@link QUOTA_PER_USD} became the divisor of every dollar the client showed with nothing, anywhere, able to tell. {@link StatusInfo.quotaPerUnitSource} is the repair — the failure is still absorbed, but it is no longer erased, and `assumed` names exactly the case where the constant is a guess rather than a documented value.
- */
+/** GET `{admin}/status` — deployment identity + the quota→USD peg in one read. A richer sibling of {@link fetchQuotaPerUsd} for callers that also want to show which deployment/version a key is hitting (e.g. a status tooltip). The endpoint is public; we send auth like every other admin read. Never throws — every field falls back so a caller can always render. */
 export async function fetchStatus(opts: RequestOptions): Promise<StatusInfo> {
-  // Only reached when the live value is unusable; on the public host the constant IS the published peg, so it is a fallback in provenance only.
-  const fallbackSource: QuotaPegSource = isDefaultDeployment(opts.baseUrl) ? 'default' : 'assumed'
   try {
     const url = `${adminApiBase(opts.baseUrl)}/status`
     const body = await getJson<
@@ -130,22 +98,17 @@ export async function fetchStatus(opts: RequestOptions): Promise<StatusInfo> {
       }>
     >(url, opts)
     const d = body.data ?? {}
-    const live = typeof d.quota_per_unit === 'number' && d.quota_per_unit > 0
     return {
-      quotaPerUnit: live ? d.quota_per_unit! : QUOTA_PER_USD,
-      quotaPerUnitSource: live ? 'deployment' : fallbackSource,
+      quotaPerUnit:
+        typeof d.quota_per_unit === 'number' && d.quota_per_unit > 0
+          ? d.quota_per_unit
+          : QUOTA_PER_USD,
       version: typeof d.version === 'string' ? d.version : '',
       startTime: typeof d.start_time === 'number' && d.start_time > 0 ? d.start_time : 0,
       systemName: typeof d.system_name === 'string' ? d.system_name : '',
     }
   } catch {
-    return {
-      quotaPerUnit: QUOTA_PER_USD,
-      quotaPerUnitSource: fallbackSource,
-      version: '',
-      startTime: 0,
-      systemName: '',
-    }
+    return { quotaPerUnit: QUOTA_PER_USD, version: '', startTime: 0, systemName: '' }
   }
 }
 
@@ -161,10 +124,14 @@ export async function fetchBalanceUsd(
 }
 
 // ---------------------------------------------------------------------------
-// Pricing. /api/pricing returns raw model/completion ratios; EveryAPI's per-1M-token price is the same math as apps/jetbrains (Gateway.kt fetchPricing): ratio 1 == $2/1M upstream, EveryAPI charges a flat 15%.
+// Pricing. `/api/pricing` returns raw model/completion ratios plus the `group_ratio` map for the route groups the caller may use, and the price per 1M tokens is `model_ratio * 2 * group_ratio` — the same convention the dashboard pricing page renders and settlement charges (backend/internal/relay/helper/price.go multiplies the model quota by the routed group's ratio). This client cannot know which pool a given key will route through, so it quotes the cheapest ratio among the groups the model is enabled in, matching packages/api's documented derivation and the dashboard's WebMCP model projection.
+//
+// This used to multiply by a hardcoded 0.15 "EveryAPI discount", which is only the hosted deployment's default group ratio: against a self-hosted deployment (shipped default group ratio 1) or any group with a different ratio, every quote was off by ratio/0.15.
 
 const RATE_BASE_PER_1M = 2
-const EVERYAPI_DISCOUNT = 0.15
+
+/** `enable_groups` sentinel — the model is sold in every route group. */
+const ENABLE_GROUP_ALL = 'all'
 
 export interface ModelPrice {
   model: string
@@ -178,36 +145,56 @@ interface PricingRow {
   model_name?: string
   model_ratio?: number
   completion_ratio?: number
+  enable_groups?: string[]
 }
 
-/**
- * GET `{admin}/pricing` — public per-model price catalog (USD per 1M tokens).
- *
- * ⚠ Keeps the "non-array `data` → empty catalog" tolerance that {@link fetchLogs} deliberately dropped. Do NOT symmetrize them: the two endpoints build their payload differently. The pricing handler returns its in-memory catalog slice straight through — including when that slice is nil (its group filter short-circuits `len(pricing) == 0` by returning the argument unchanged, and the catalog cache is reset to nil on invalidation) — so `data: null` here IS a legitimate empty catalog, and rejecting it would turn a cold cache into "pricing unavailable". The log endpoint has no such path: gorm allocates the slice before scanning, so its empty case is always `[]`.
- */
+/** `/api/pricing` carries `group_ratio` as a sibling of `data`, not inside it. */
+interface PricingEnvelope extends Envelope<PricingRow[]> {
+  group_ratio?: Record<string, number>
+}
+
+/** Cheapest route-group multiplier this row can bill at. Falls back to 1 (list price, what a stock deployment charges) when the server sends no usable ratio — never to a discount the deployment may not grant. */
+function cheapestGroupRatio(
+  row: PricingRow,
+  groupRatio: Record<string, number> | undefined
+): number {
+  const groups = Object.entries(groupRatio ?? {}).filter(
+    ([, ratio]) => typeof ratio === 'number' && Number.isFinite(ratio) && ratio >= 0
+  )
+  const enabled = Array.isArray(row.enable_groups) ? row.enable_groups : []
+  const applicable = enabled.includes(ENABLE_GROUP_ALL)
+    ? groups
+    : groups.filter(([group]) => enabled.includes(group))
+  if (applicable.length === 0) return 1
+  return Math.min(...applicable.map(([, ratio]) => ratio))
+}
+
+/** GET `{admin}/pricing` — public per-model price catalog (USD per 1M tokens). */
 export async function fetchPricing(opts: RequestOptions): Promise<ModelPrice[]> {
   const url = `${adminApiBase(opts.baseUrl)}/pricing`
-  const body = await getJson<Envelope<PricingRow[]>>(url, opts)
+  const body = await getJson<PricingEnvelope>(url, opts)
   const err = envelopeError(body, opts.apiKey)
   if (err) throw new Error(err)
   const rows = Array.isArray(body.data) ? body.data : []
   return rows.flatMap((r) => {
-    // Drop unpriced models (ratio <= 0): the backend uses ratio 0 as an "unpriced / not sold" sentinel, and rendering it as a real $0.00 model misleads. apps/landingpage/src/lib/public-pricing.ts drops the same rows for
-    // the same reason.
+    // Drop unpriced models (ratio <= 0): the backend uses ratio 0 as an "unpriced / not sold" sentinel, and rendering it as a real $0.00 model misleads. Matches apps/landingpage/scripts/gen-pricing.mjs, which skips
+    // ratio <= 0.
     if (!r.model_name || typeof r.model_ratio !== 'number' || r.model_ratio <= 0) return []
     const completionRatio = typeof r.completion_ratio === 'number' ? r.completion_ratio : 1
+    const groupRatio = cheapestGroupRatio(r, body.group_ratio)
+    const inputPer1M = r.model_ratio * RATE_BASE_PER_1M * groupRatio
     return [
       {
         model: r.model_name,
-        inputPer1M: r.model_ratio * RATE_BASE_PER_1M * EVERYAPI_DISCOUNT,
-        outputPer1M: r.model_ratio * completionRatio * RATE_BASE_PER_1M * EVERYAPI_DISCOUNT,
+        inputPer1M,
+        outputPer1M: inputPer1M * completionRatio,
       },
     ]
   })
 }
 
 // ---------------------------------------------------------------------------
-// Usage aggregation. The backend ships no per-token rollup, so we synthesize one from the last-N log rows (ported from apps/raycast/src/wallet.tsx).
+// Usage aggregation, TOKEN-scoped and bucketed on the CLIENT's local calendar. Synthesized from the last-N `/api/log/token` rows (ported from apps/raycast/src/wallet.tsx), which the backend caps at 1000 — so on a busy key these figures under-report. It is the right source for a per-key view, for the 7-day series and `biggest` (which no server endpoint provides), and as the fallback for a deployment without `/api/usage/account`; for account-wide today/7-day/top-model totals prefer `fetchAccountSummary` above.
 
 export interface UsageSummary {
   count: number
@@ -300,5 +287,167 @@ export function summarize(logs: LogRow[], now: Date = new Date()): UsageSummary 
     biggest,
     dailyQuota,
     dailyCalls,
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Server-computed account rollup. `/api/usage/account` (backend: transport/http/token/raycast_account.go → modules/account.GetRaycastUsageSummary) aggregates the whole log table in SQL, so it is correct on an account with more than the 1000 rows `/api/log/token` will ever return. Same auth gate as the other reads here: TokenAuthReadOnly, which accepts any enabled, unexpired `sk-everyapi-` key whose scope set is empty or contains `usage:read`.
+
+export interface AccountUsagePeriod {
+  requests: number
+  quota: number
+  prompt_tokens: number
+  completion_tokens: number
+}
+
+export interface AccountTopModel {
+  model: string
+  requests: number
+  quota: number
+}
+
+export interface AccountUsage {
+  today: AccountUsagePeriod
+  last_7_days: AccountUsagePeriod
+  /** Up to five models, ordered by request count descending, over the same 7-day window as {@link last_7_days}. */
+  top_models: AccountTopModel[]
+  /** The timezone the day boundaries were computed in. The backend pins this to `UTC` so every API replica agrees; a client rendering "today" in local time will disagree with it near midnight. */
+  timezone: string
+}
+
+export interface AccountSummary {
+  username: string
+  display_name: string
+  avatar_url: string
+  /** The OWNER's wallet, in the same internal quota unit as {@link WalletData.total_available}; divide by the deployment's peg ({@link fetchQuotaPerUsd}). Distinct from a per-key balance: `/api/usage/token/` reports what THIS key may still spend, this reports what the account holds. */
+  wallet: { quota: number; currency: string }
+  /** Unix seconds at which the presented key expires; `-1` for a key that never expires. */
+  oauth_token: { expires_at: number }
+  usage: AccountUsage
+}
+
+const EMPTY_PERIOD: AccountUsagePeriod = {
+  requests: 0,
+  quota: 0,
+  prompt_tokens: 0,
+  completion_tokens: 0,
+}
+
+function usagePeriod(raw: Partial<AccountUsagePeriod> | undefined): AccountUsagePeriod {
+  if (!raw) return { ...EMPTY_PERIOD }
+  const num = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? v : 0)
+  return {
+    requests: num(raw.requests),
+    quota: num(raw.quota),
+    prompt_tokens: num(raw.prompt_tokens),
+    completion_tokens: num(raw.completion_tokens),
+  }
+}
+
+/**
+ * GET `{admin}/usage/account` — the server-computed today / last-7-days / top-5-models rollup for the key OWNER.
+ *
+ * Prefer this over `fetchLogs` + {@link summarize} wherever both work: the rollup is a SQL aggregate over the whole log table, while `/api/log/token` is capped at 1000 rows, so on a busy account the local recomputation silently under-reports and every client under-reports differently.
+ *
+ * Two semantic differences a caller must not paper over:
+ *
+ *  - SCOPE. This aggregates every request the OWNER made, across all their keys. {@link fetchLogs}/{@link summarize} aggregate only the presented key's rows. A surface labelled "this key's usage" wants the log path; one labelled "your usage" wants this.
+ *  - DAY BOUNDARIES. The backend buckets on UTC midnights and names the timezone in {@link AccountUsage.timezone}; {@link summarize} buckets on the client's LOCAL calendar midnights. The two "today" figures legitimately differ for a user who is not on UTC.
+ *
+ * Throws on a non-2xx (404 on a deployment predating the endpoint, 403 for a key whose explicit scope set omits `usage:read`) and on an envelope-level failure. {@link fetchUsageOverview} wraps that with the log fallback.
+ */
+export async function fetchAccountSummary(opts: RequestOptions): Promise<AccountSummary> {
+  const url = `${adminApiBase(opts.baseUrl)}/usage/account`
+  const body = await getJson<Envelope<AccountSummary>>(url, opts)
+  const err = envelopeError(body, opts.apiKey)
+  if (err) throw new Error(err)
+  const data = body.data
+  if (!data)
+    throw new Error(redactSecrets(body.message || 'gateway returned no account data', opts.apiKey))
+  const usage = data.usage
+  return {
+    username: typeof data.username === 'string' ? data.username : '',
+    display_name: typeof data.display_name === 'string' ? data.display_name : '',
+    avatar_url: typeof data.avatar_url === 'string' ? data.avatar_url : '',
+    wallet: {
+      quota: typeof data.wallet?.quota === 'number' ? data.wallet.quota : 0,
+      currency: typeof data.wallet?.currency === 'string' ? data.wallet.currency : 'USD',
+    },
+    // -1 is the backend's "never expires" sentinel, so it must survive rather than be normalized to 0 (which a caller would read as "expired at the epoch").
+    oauth_token: {
+      expires_at:
+        typeof data.oauth_token?.expires_at === 'number' ? data.oauth_token.expires_at : -1,
+    },
+    usage: {
+      today: usagePeriod(usage?.today),
+      last_7_days: usagePeriod(usage?.last_7_days),
+      top_models: Array.isArray(usage?.top_models)
+        ? usage.top_models.filter((m) => m && typeof m.model === 'string')
+        : [],
+      timezone: typeof usage?.timezone === 'string' ? usage.timezone : 'UTC',
+    },
+  }
+}
+
+/** Where a {@link UsageOverview}'s numbers came from — the two sources cover different scopes and different day boundaries, so a UI that can show both should say which it has. */
+export type UsageOverviewSource = 'account-rollup' | 'token-logs'
+
+/**
+ * The figures BOTH usage sources can state honestly, so a caller can render one component against either.
+ *
+ * Deliberately the intersection, not the union: the rollup has no per-day series and no single largest call, and zero-filling those from a source that does not have them would render an empty sparkline as real data. A surface that needs the 7-day series or `biggest` must call {@link fetchLogs} + {@link summarize} itself and accept the 1000-row cap.
+ */
+export interface UsageOverview {
+  source: UsageOverviewSource
+  /** `'UTC'` for the rollup; `'local'` when computed client-side from the log rows. */
+  timezone: string
+  /** True when the numbers cover every key the owner holds (the rollup) rather than only the presented key (the logs). */
+  accountWide: boolean
+  todayQuota: number
+  todayCalls: number
+  todayPromptTokens: number
+  todayCompletionTokens: number
+  weekQuota: number
+  weekCalls: number
+  topModels: Array<{ name: string; count: number; quota: number }>
+}
+
+/**
+ * Usage figures from the server rollup, falling back to the client-side recomputation when the rollup is unreachable.
+ *
+ * The fallback is for a deployment that does not serve `/api/usage/account` (self-hosted builds predating it answer 404) or a key that may not reach it (403 when its explicit scope set omits `usage:read` — though such a key cannot read `/api/log/token` either, so that path then fails too and this rethrows). Any rollup failure falls through; the log error is what surfaces if the fallback also fails.
+ *
+ * Read {@link UsageOverview.source} before comparing numbers across sessions: the two paths differ in scope and in day boundaries, so a value can legitimately change when the source does.
+ */
+export async function fetchUsageOverview(opts: RequestOptions): Promise<UsageOverview> {
+  try {
+    const summary = await fetchAccountSummary(opts)
+    const { today, last_7_days, top_models, timezone } = summary.usage
+    return {
+      source: 'account-rollup',
+      timezone,
+      accountWide: true,
+      todayQuota: today.quota,
+      todayCalls: today.requests,
+      todayPromptTokens: today.prompt_tokens,
+      todayCompletionTokens: today.completion_tokens,
+      weekQuota: last_7_days.quota,
+      weekCalls: last_7_days.requests,
+      topModels: top_models.map((m) => ({ name: m.model, count: m.requests, quota: m.quota })),
+    }
+  } catch {
+    const local = summarize(await fetchLogs(opts))
+    return {
+      source: 'token-logs',
+      timezone: 'local',
+      accountWide: false,
+      todayQuota: local.todayQuota,
+      todayCalls: local.todayCalls,
+      todayPromptTokens: local.todayPromptTokens,
+      todayCompletionTokens: local.todayCompletionTokens,
+      weekQuota: local.weekQuota,
+      weekCalls: local.weekCalls,
+      topModels: local.topModels,
+    }
   }
 }

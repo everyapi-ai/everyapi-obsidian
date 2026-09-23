@@ -7,6 +7,7 @@
 import { fetchBalanceUsd, fetchQuotaPerUsd } from '@everyapi-ai/gateway'
 import { type Editor, Plugin, WorkspaceLeaf, addIcon, getLanguage } from 'obsidian'
 
+import { refreshIfNeeded } from './auth'
 import { CLIENT_APP } from './constants'
 import { truncateNote } from './format'
 import { formatUsd, resolveLocale, setLocale, t } from './i18n'
@@ -52,6 +53,8 @@ export default class EveryApiPlugin extends Plugin {
   settings: EveryApiSettings = { ...DEFAULT_SETTINGS }
   private statusEl: HTMLElement | null = null
   private lastBalanceAt = 0
+  // One rotation at a time: onload, the status bar and a send can all reach ensureFreshToken at once, and a second refresh with an already-rotated token is treated by the gateway as replay and revokes the whole family.
+  private refreshInFlight: Promise<boolean> | null = null
 
   async onload(): Promise<void> {
     await this.loadSettings()
@@ -112,6 +115,9 @@ export default class EveryApiPlugin extends Plugin {
 
     this.addSettingTab(new EveryApiSettingTab(this.app, this))
 
+    // A device-grant key is good for 90 days and rotates itself; do it at load so a vault opened after a long gap is already connected rather than failing the first send. Never throws — a failed rotation leaves the current key in place.
+    void this.ensureFreshToken()
+
     this.statusEl = this.addStatusBarItem()
     this.statusEl.addClass('mod-clickable', 'everyapi-status')
     this.statusEl.setAttribute('aria-label', t('status.openChatAria'))
@@ -148,6 +154,16 @@ export default class EveryApiPlugin extends Plugin {
       }
     }
     void this.refreshStatusBar(true)
+  }
+
+  /** Rotate the OAuth2 device key when it is close to expiry, at most one flight at a time. A pasted key has no refresh token and is left alone. */
+  ensureFreshToken(): Promise<boolean> {
+    if (!this.refreshInFlight) {
+      this.refreshInFlight = refreshIfNeeded(this).finally(() => {
+        this.refreshInFlight = null
+      })
+    }
+    return this.refreshInFlight
   }
 
   async refreshStatusBar(force = false): Promise<void> {

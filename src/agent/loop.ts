@@ -1,12 +1,12 @@
-// The EveryAPI agentic tool-call loop for the Obsidian surface (contracted by
-// @everyapi-ai/agent-contract). Ported from apps/vscode/src/agent/loop.ts — the loop itself is host-agnostic; only the auth header differs (Obsidian runs in Electron's fetch, where User-Agent is silently dropped, so we identify the surface via X-Client-App instead of userAgent — same as the gateway's streamChat).
+// The EveryAPI agentic tool-call loop for the Obsidian surface (contracted by @everyapi-ai/agent-contract). Ported from apps/vscode/src/agent/loop.ts — the loop itself is host-agnostic; only the auth header differs (Obsidian runs in Electron's fetch, where User-Agent is silently dropped, so we identify the surface via X-Client-App instead of userAgent — same as the gateway's streamChat).
 //
 // Drives a multi-turn conversation against the EveryAPI gateway in pure OpenAI shape: it sends the `tools` array and `tool_choice: "auto"`, parses the assistant's `tool_calls`, runs each through the per-host executors (which enforce safety), appends one `role:"tool"` message per call, and repeats until the assistant stops calling tools or the iteration cap is hit.
 //
-// Why a dedicated client instead of @everyapi-ai/gateway's streamChat: that shared client's request body and ChatMessage type carry neither a `tools` field nor `tool`/assistant-with-tool_calls messages. This module sends the richer agentic request shape the loop requires while still talking the same /v1 endpoint. Text is streamed for live UI; tool_calls finalize at end-of-stream exactly as loop.md's streaming accumulator prescribes.
+// The transport is @everyapi-ai/gateway's streamChat — the single SSE client every EveryAPI surface shares. It carries the `tools` array, accumulates fragmented tool-call deltas by their `index` slot, flushes the TextDecoder so a stream ending mid multi-byte character keeps its closing frame, and replays a non-SSE 200 completion body (the shape iOS WKWebView and a gateway that ignores `stream: true` produce). This module owns only the agentic control flow on top of it.
 
-import { authHeaders, redactSecrets } from '@everyapi-ai/gateway'
+import { streamChat, type ChatTool, type ChatUsage } from '@everyapi-ai/gateway'
 
+import { throwIfAborted } from './abort'
 import { resultToString } from './diff'
 import type { VaultExecutors } from './executors'
 import { AGENT_TOOLS, isToolName, TOOL_NAMES } from './tools'
@@ -29,11 +29,8 @@ type LoopMessage =
   | { role: 'assistant'; content: string; tool_calls?: AssistantToolCall[] }
   | { role: 'tool'; tool_call_id: string; content: string }
 
-export interface ChatUsage {
-  prompt_tokens?: number
-  completion_tokens?: number
-  total_tokens?: number
-}
+/** Re-exported rather than redeclared: the loop hands the gateway's usage block straight to the view, and a local copy is exactly how the two would drift. */
+export type { ChatUsage } from '@everyapi-ai/gateway'
 
 export interface AgentLoopInput {
   baseUrl: string
@@ -73,7 +70,6 @@ export interface AgentLoopResult {
 interface StreamTurn {
   text: string
   toolCalls: AssistantToolCall[]
-  finishReason: string | undefined
   usage: ChatUsage | undefined
 }
 
@@ -101,15 +97,12 @@ export async function runAgentLoop(input: AgentLoopInput): Promise<AgentLoopResu
 
     // Execute each call sequentially (loop.md: deterministic ordering, and a later mutating call may depend on an earlier one). One tool message per call, preserving tool_call_id.
     for (const call of turn.toolCalls) {
-      if (input.signal.aborted) {
-        // A user stop between tool calls is a cancellation, not the iteration budget being exhausted. Throw the standard AbortError so the caller's abort handling (which keeps partial output and adds no "budget reached" note) runs, instead of returning a mislabelled truncation.
-        throw input.signal.reason instanceof Error
-          ? input.signal.reason
-          : new DOMException('Aborted', 'AbortError')
-      }
+      throwIfAborted(input.signal)
       const resultStr = await runOneCall(input, call, failStreak)
       messages.push({ role: 'tool', tool_call_id: call.id, content: resultStr })
     }
+    // A Stop pressed during the LAST call of a turn would otherwise only surface on the next round trip's fetch; check here so the turn ends as a cancellation the moment the executor returns.
+    throwIfAborted(input.signal)
   }
 
   // Iteration cap reached: make one final non-tool request so the model can summarize where it got to, then surface that as the (truncated) answer.
@@ -126,6 +119,8 @@ export async function runAgentLoop(input: AgentLoopInput): Promise<AgentLoopResu
     ],
     /* disableTools */ true
   )
+  // The summarize round trip is a billable request like every in-loop turn, and the host sums each onUsage into one turn total (view.ts's mergeUsage), so skipping it here silently dropped the tokens AND the cost of the largest request of the run — it carries the entire accumulated message history — from what the user is shown for a truncated turn.
+  if (final.usage) input.onUsage?.(final.usage)
   return { text: final.text || lastText, iterations: MAX_ITERATIONS, truncated: true }
 }
 
@@ -168,7 +163,7 @@ async function runOneCall(
   }
 
   input.onToolEvent?.({ name, args, status: 'running' })
-  const result = await input.executors.execute(name, args)
+  const result = await input.executors.execute(name, args, input.signal)
   input.onToolEvent?.({ name, args, status: result.status === 'ok' ? 'ok' : result.status })
 
   if (result.status === 'error') failStreak.set(targetKey, (failStreak.get(targetKey) ?? 0) + 1)
@@ -177,176 +172,44 @@ async function runOneCall(
   return resultToString(result)
 }
 
-// ---- one model round trip (streaming, OpenAI shape) ---------------------------
+// ---- one model round trip (streaming, via the shared SSE client) --------------
 
-interface OpenAiStreamChunk {
-  choices?: Array<{
-    delta?: {
-      content?: string
-      tool_calls?: Array<{
-        index?: number
-        id?: string
-        type?: string
-        function?: { name?: string; arguments?: string }
-      }>
-    }
-    finish_reason?: string | null
-  }>
-  usage?: ChatUsage | null
-  // OpenAI-compatible gateways can return HTTP 200 and then signal a failure mid-stream as a JSON frame (context-length exceeded, quota, …). Surface it instead of dropping the frame and rendering a truncated reply as success.
-  error?: { message?: string; type?: string; code?: string } | string
-}
-
+/** One model round trip. Streams assistant text through `onTextDelta` for live UI and returns the turn's finished tool calls, which OpenAI only completes at end-of-stream. */
 async function streamOneTurn(
   input: AgentLoopInput,
   messages: LoopMessage[],
   disableTools = false
 ): Promise<StreamTurn> {
-  const body = {
+  const toolCalls: AssistantToolCall[] = []
+  let text = ''
+  let usage: ChatUsage | undefined
+
+  await streamChat({
+    baseUrl: input.baseUrl,
+    apiKey: input.apiKey,
+    clientApp: input.clientApp,
     model: input.model,
     messages,
-    stream: true,
-    stream_options: { include_usage: true },
-    ...(disableTools
-      ? { tool_choice: 'none' as const }
-      : { tools: AGENT_TOOLS, tool_choice: 'auto' as const }),
-  }
-
-  const res = await fetch(`${input.baseUrl}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      ...authHeaders({ baseUrl: input.baseUrl, apiKey: input.apiKey, clientApp: input.clientApp }),
-      'Content-Type': 'application/json',
-      Accept: 'text/event-stream',
-    },
-    body: JSON.stringify(body),
+    tools: disableTools ? undefined : (AGENT_TOOLS as ChatTool[]),
+    // tool_choice is not a reserved key, so it passes through to the upstream unchanged.
+    modelOptions: { tool_choice: disableTools ? 'none' : 'auto' },
     signal: input.signal,
+    onTextDelta: (chunk) => {
+      text += chunk
+      input.onTextDelta(chunk)
+    },
+    onToolCall: (call) => {
+      // Forward the upstream's own `arguments` string, never JSON.stringify(call.input): re-serialising a parsed object is not byte-identical, and for a malformed payload it would double-encode the raw text into a JSON string literal.
+      toolCalls.push({
+        id: call.id,
+        type: 'function',
+        function: { name: call.name, arguments: call.arguments || '{}' },
+      })
+    },
+    onUsage: (u) => {
+      usage = u
+    },
   })
 
-  if (!res.ok) {
-    // Redact before surfacing: a misconfigured self-hosted proxy can echo the caller's own Authorization header into the error body (every sibling client — VS Code, the gateway helpers — redacts this boundary).
-    const detail = redactSecrets(await res.text().catch(() => ''), input.apiKey)
-    throw new Error(
-      `HTTP ${res.status} ${res.statusText}${detail ? ` — ${detail.slice(0, 200)}` : ''}`
-    )
-  }
-
-  let text = ''
-  let finishReason: string | undefined
-  let usage: ChatUsage | undefined
-  // Accumulate fragmented tool-call deltas keyed by their `index` slot.
-  const acc = new Map<number, { id: string; name: string; argsBuf: string }>()
-  // Buffer the raw body until the first real SSE frame, so an HTTP-200 response whose body is a bare JSON `{"error":…}` (no `data:` framing) can still be surfaced instead of returning an empty reply as success. Mirrors streamChat.
-  let sawData = false
-  let errorProbe = ''
-  const ERROR_PROBE_CAP = 64 * 1024
-
-  const processLine = (rawLine: string): void => {
-    if (!sawData && errorProbe.length < ERROR_PROBE_CAP) errorProbe += rawLine + '\n'
-    if (rawLine.startsWith(':')) return
-    if (!rawLine.startsWith('data:')) return
-    const payload = rawLine.replace(/^data:\s?/, '').replace(/\s+$/, '')
-    if (!payload || payload === '[DONE]') return
-    let chunk: OpenAiStreamChunk
-    try {
-      chunk = JSON.parse(payload) as OpenAiStreamChunk
-    } catch {
-      return
-    }
-    sawData = true
-    // A mid-stream error frame arrives after HTTP 200, so the !res.ok guard never fired. Throw so the caller hits its error path instead of treating the truncated reply as a clean completion. Redact as the !res.ok branch does — a misconfigured upstream can echo the Authorization header here too.
-    if (chunk.error) {
-      throw new Error(
-        redactSecrets(
-          typeof chunk.error === 'string'
-            ? chunk.error
-            : (chunk.error.message ?? 'upstream stream error'),
-          input.apiKey
-        )
-      )
-    }
-    const choice = chunk.choices?.[0]
-    const delta = choice?.delta
-    if (typeof delta?.content === 'string' && delta.content.length) {
-      text += delta.content
-      input.onTextDelta(delta.content)
-    }
-    if (delta?.tool_calls) {
-      delta.tool_calls.forEach((tc, idx) => {
-        const i = tc.index ?? idx
-        const cur = acc.get(i) ?? { id: '', name: '', argsBuf: '' }
-        if (tc.id) cur.id = tc.id
-        if (tc.function?.name) cur.name = tc.function.name
-        if (tc.function?.arguments) cur.argsBuf += tc.function.arguments
-        acc.set(i, cur)
-      })
-    }
-    if (choice?.finish_reason) finishReason = choice.finish_reason
-    if (chunk.usage) usage = chunk.usage
-  }
-
-  if (!res.body) {
-    const t = await res.text()
-    for (const line of t.split('\n')) processLine(line.replace(/\r$/, ''))
-  } else {
-    const reader = res.body.getReader()
-    const decoder = new TextDecoder()
-    let buf = ''
-    try {
-      for (;;) {
-        const { value, done } = await reader.read()
-        if (done) break
-        buf += decoder.decode(value, { stream: true })
-        let nl: number
-        while ((nl = buf.indexOf('\n')) !== -1) {
-          processLine(buf.slice(0, nl).replace(/\r$/, ''))
-          buf = buf.slice(nl + 1)
-        }
-      }
-    } catch (err) {
-      // A mid-stream error frame thrown by processLine (or an abort) left the body partially read — cancel it so the connection is torn down instead of left dangling.
-      await reader.cancel(err).catch(() => {})
-      throw err
-    } finally {
-      reader.releaseLock()
-    }
-    const trailing = buf.replace(/\r$/, '').trim()
-    if (trailing) processLine(trailing)
-  }
-
-  // No SSE frame ever arrived: the upstream may have returned a plain JSON error body on a 200 (invalid model, quota, context-length, …). Surface it so the caller hits its error path instead of rendering an empty reply as a clean completion — mirrors @everyapi-ai/gateway streamChat.
-  if (!sawData) {
-    const probe = errorProbe.trim()
-    if (probe) {
-      let parsed: OpenAiStreamChunk | undefined
-      try {
-        parsed = JSON.parse(probe) as OpenAiStreamChunk
-      } catch {
-        parsed = undefined
-      }
-      if (parsed?.error) {
-        throw new Error(
-          redactSecrets(
-            typeof parsed.error === 'string'
-              ? parsed.error
-              : (parsed.error.message ?? 'upstream error'),
-            input.apiKey
-          )
-        )
-      }
-    }
-  }
-
-  // Finalize buffered tool calls. Backstop per loop.md: even if finish_reason wasn't observed, complete any buffered calls (some relayed paths omit it).
-  const toolCalls: AssistantToolCall[] = []
-  for (const tc of [...acc.entries()].sort((a, b) => a[0] - b[0]).map(([, v]) => v)) {
-    if (!tc.id || !tc.name) continue
-    toolCalls.push({
-      id: tc.id,
-      type: 'function',
-      function: { name: tc.name, arguments: tc.argsBuf || '{}' },
-    })
-  }
-
-  return { text, toolCalls, finishReason, usage }
+  return { text, toolCalls, usage }
 }

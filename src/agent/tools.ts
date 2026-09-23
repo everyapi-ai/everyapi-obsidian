@@ -1,5 +1,4 @@
-// OpenAI-shaped tool definitions for the EveryAPI agentic NOTES tool set, as it operates over an Obsidian vault. These mirror the canonical contract at
-// @everyapi-ai/agent-contract (the single source of truth across EveryAPI agent-capable plugins) and we keep the EXACT contract names — read_file, list_dir, search_text, write_file, apply_diff — for cross-plugin consistency. The descriptions are written for notes ("file" = a vault note/file), and there is NO execute_command: Obsidian has no shell. We ship these in the `tools` field of /v1/chat/completions and rely on the gateway to translate them to each upstream's native tool-use format — the plugin never converts client-side.
+// OpenAI-shaped tool definitions for the EveryAPI agentic NOTES tool set, as it operates over an Obsidian vault. These mirror the canonical contract at @everyapi-ai/agent-contract (the single source of truth across EveryAPI agent-capable plugins) and we keep the EXACT contract names — read_file, list_dir, search_text, write_file, apply_diff — for cross-plugin consistency. The descriptions are written for notes ("file" = a vault note/file), and there is NO execute_command: Obsidian has no shell. We ship these in the `tools` field of /v1/chat/completions and rely on the gateway to translate them to each upstream's native tool-use format — the plugin never converts client-side.
 
 import {
   OBSIDIAN_AGENT_TOOL_NAMES,
@@ -165,6 +164,11 @@ export const AGENT_TOOLS: OpenAiTool[] = [
             type: 'string',
             description:
               "One or more SEARCH/REPLACE blocks in the exact format described above. ':start_line:' is required on the SEARCH side; never put a start line on the REPLACE side.",
+          },
+          replace_all: {
+            type: 'boolean',
+            description:
+              'Replace EVERY exact occurrence of each SEARCH block in the note instead of only the one anchored near its start line (default false). Use it for a vault-wide rename inside a single note; leave it off for a targeted edit.',
           },
         },
         required: ['path', 'diff'],
